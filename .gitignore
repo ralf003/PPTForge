@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 私有资产与商业字体（禁止提交）
+private_assets/
+*.ttc
+*.ttf
+decks/
+
+# 本地渲染与产物
+review/
+*.pptx
+!examples/*.pptx
+.DS_Store

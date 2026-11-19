@@ -1,0 +1,48 @@
+title: 智能体技术演进与工程化路径
+author: PPTForge
+pages:
+  - role: cover
+    title: 智能体技术演进与工程化路径
+    subtitle: 从概念验证到可托付的生产系统
+    note: 开场说明本次汇报聚焦智能体从演示走向生产的关键工程问题。
+
+  - role: section
+    title: 一、为什么需要重新审视
+    subtitle: 演示成功不等于生产可用
+    note: 强调当前多数智能体停留在 Demo 阶段，生产可靠性存在系统性缺口。
+
+  - role: content
+    title: 生产落地的三类核心挑战
+    items:
+      - name: 误差级联
+        desc: 单步高成功率在长链路上指数级坍缩，错误沿轨迹传播
+      - name: 轨迹级幻觉
+        desc: 沿任务序列产生结构性偏离，含操作性幻觉与空转
+      - name: 安全漂移
+        desc: 初始对齐在长任务中被侵蚀，出现先拒绝后执行
+    note: 逐条解释三类挑战，重点是它们都不是单点问题而是链路问题。
+
+  - role: section
+    title: 二、工程化应对
+    subtitle: 角色分离与确定性质量门
+    note: 过渡到解决方案，强调用工程机制而非提示词兜底。
+
+  - role: content
+    title: 五角色协同的生产架构
+    items:
+      - name: 角色分离
+        desc: 语义判断与视觉渲染解耦，结构化产物交接
+      - name: 接地验证
+        desc: 可执行测试与渲染回环，决策建立在证据之上
+      - name: 质量门前置
+        desc: 字号、对比度、schema 硬门拦截，不依赖人工自觉
+    note: 说明每个角色的职责边界，以及确定性引擎如何保证下限。
+
+  - role: summary
+    title: 结论
+    items:
+      - name: 方向成立
+        desc: 智能体能力边界清晰，工程化是规模化前提
+      - name: 路径可落地
+        desc: 声明式生产加质量门，产出可编辑可审计资产
+    note: 收尾，给出明确结论并预留问答。
