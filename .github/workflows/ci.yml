@@ -6,7 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # 核心质量门：确定性强、不依赖重型系统包，作为合并阻断（required check）
+  quality:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -37,30 +38,41 @@ jobs:
           PY
       - name: 私有泄漏扫描
         run: |
-          # 按文件路径检测私有字体/资产目录/私钥文件，避免内容关键词自我命中
+          # 按文件路径检测，避免内容关键词自我命中
           if find . -path ./.git -prune -o \( -iname 'msyh*' -o -iname '*.pem' -o -iname 'id_rsa*' -o -path '*private_assets*' -o -iname '*.key' \) -print | grep -q .; then
             echo "检测到私有字体/资产/私钥文件，阻断"
             find . -path ./.git -prune -o \( -iname 'msyh*' -o -iname '*.pem' -o -iname 'id_rsa*' -o -path '*private_assets*' -o -iname '*.key' \) -print
             exit 1
           fi
-          # 内容里的真实私钥头（排除本工作流自身定义）
           if grep -RIn "PRIVATE KEY" . --exclude-dir=.git --exclude=ci.yml; then
             echo "检测到私钥内容，阻断" && exit 1
           fi
           echo "泄漏扫描通过"
-      - name: 渲染逐页回看
+
+  # 渲染逐页回看：依赖 apt 安装 LibreOffice，环境抖动不得阻断核心质量结论
+  render-preview:
+    needs: quality
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[dev]'
+      - name: 安装LibreOffice并渲染逐页回看
         timeout-minutes: 6
         run: |
           sudo apt-get update -qq
-          # 只装 impress 核心（--no-install-recommends）减小下载量，加 apt 重试防网络抖动
           sudo apt-get install -y -qq --no-install-recommends \
             -o Acquire::Retries=3 libreoffice-impress poppler-utils
+          pptforge build examples/sample_spec.yaml -o /tmp/sample.pptx
           soffice --headless --convert-to pdf --outdir /tmp /tmp/sample.pptx
           pdftoppm -png -r 90 /tmp/sample.pdf /tmp/slide
       - name: 上传渲染产物
         uses: actions/upload-artifact@v4
         with:
-          name: rendered-${{ matrix.python-version }}
+          name: rendered-preview
           path: |
             /tmp/sample.pptx
             /tmp/slide-*.png
