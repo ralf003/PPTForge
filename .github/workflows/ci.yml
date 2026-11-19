@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
-      - run: pip install -e .[dev]
+      - run: pip install -e '.[dev]'
       - name: Ruff
         run: ruff check src tests
       - name: Mypy
@@ -37,9 +37,17 @@ jobs:
           PY
       - name: 私有泄漏扫描
         run: |
-          if grep -RInE "msyh|private_assets|BEGIN (RSA|OPENSSH) PRIVATE KEY" . --exclude-dir=.git; then
-            echo "检测到私有/敏感内容，阻断" && exit 1
+          # 按文件路径检测私有字体/资产目录/私钥文件，避免内容关键词自我命中
+          if find . -path ./.git -prune -o \( -iname 'msyh*' -o -iname '*.pem' -o -iname 'id_rsa*' -o -path '*private_assets*' -o -iname '*.key' \) -print | grep -q .; then
+            echo "检测到私有字体/资产/私钥文件，阻断"
+            find . -path ./.git -prune -o \( -iname 'msyh*' -o -iname '*.pem' -o -iname 'id_rsa*' -o -path '*private_assets*' -o -iname '*.key' \) -print
+            exit 1
           fi
+          # 内容里的真实私钥头（排除本工作流自身定义）
+          if grep -RIn "PRIVATE KEY" . --exclude-dir=.git --exclude=ci.yml; then
+            echo "检测到私钥内容，阻断" && exit 1
+          fi
+          echo "泄漏扫描通过"
       - name: 渲染逐页回看
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq libreoffice poppler-utils
