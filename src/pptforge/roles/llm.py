@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from typing import Protocol
-
-import httpx
 
 
 class LLMBackend(Protocol):
@@ -60,12 +60,18 @@ class OpenAICompatibleBackend:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
         }
-        with httpx.Client(timeout=self._timeout) as client:
-            resp = client.post(
-                f"{self.base_url}/chat/completions", headers=headers, json=payload
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"LLM 后端返回 {exc.code}：{body[:300]}") from exc
         return data["choices"][0]["message"]["content"]
 
 
