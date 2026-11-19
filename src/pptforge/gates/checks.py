@@ -54,7 +54,9 @@ def run_gates(prs: Presentation) -> GateReport:
                     if run.font.size is not None:
                         size_pt = run.font.size.pt
                         if size_pt < MIN_RUN_SIZE:
+                            snippet = run.text[:20]
                             issues.append(
-                                f"P{slide_idx} 字号 {size_pt}pt 低于下限 {MIN_RUN_SIZE}：{run.text[:20]!r}"
+                                f"P{slide_idx} 字号 {size_pt}pt 低于下限"
+                                f" {MIN_RUN_SIZE}：{snippet!r}"
                             )
     return GateReport(issues)

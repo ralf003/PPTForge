@@ -163,7 +163,7 @@ class Renderer:
             slide.notes_slide.notes_text_frame.text = page.note
 
     # ---- 主流程 ----
-    def render(self, deck: Deck) -> Presentation:
+    def render(self, deck: Deck) -> None:
         problems = deck.validate()
         if problems:
             raise ValueError("Deck 校验失败：" + "；".join(problems))
@@ -175,12 +175,11 @@ class Renderer:
                 "summary": self._summary,
             }[page.role](page)
         fix_chart_axis_ids(self.prs)
-        return self.prs
 
     def save(self, deck: Deck, path: str | Path) -> Path:
         self.render(deck)
         out = Path(path)
-        self.prs.save(out)
+        self.prs.save(str(out))
         return out
 
 

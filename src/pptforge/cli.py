@@ -14,9 +14,9 @@ from pptforge.models import Deck
 from pptforge.theme import FONT_FAMILY
 
 
-def _check(name: str, ok: bool, detail: str, critical: bool = True) -> tuple[bool, bool, str]:
+def _check(name: str, ok: bool, detail: str, critical: bool = True) -> tuple[bool, str]:
     mark = "OK " if ok else ("!! " if critical else "WARN")
-    return critical and not ok, f"[{mark}] {name}: {detail}"
+    return bool(critical and not ok), f"[{mark}] {name}: {detail}"
 
 
 def cmd_doctor() -> int:
@@ -67,9 +67,9 @@ def cmd_doctor() -> int:
         )
     )
 
-    has_failure = any(failed for failed, _ in rows)
+    has_failure = any(row[0] for row in rows)
     print(f"PPTForge v{__version__} doctor")
-    for _, line in rows:
+    for _failed, line in rows:
         print(line)
     print("结果：" + ("环境就绪" if not has_failure else "存在关键缺失项，请按提示处理"))
     return 1 if has_failure else 0

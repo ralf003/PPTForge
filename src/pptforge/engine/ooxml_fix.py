@@ -25,7 +25,6 @@ def fix_chart_axis_ids(prs: Presentation) -> int:
                 continue
             chart_space = shape.chart._chartSpace
             id_elements = chart_space.iter(qn("c:axId"))
-            cross_elements = chart_space.iter(qn("c:crossAx"))
 
             # 建立旧值 -> 新值映射
             remap: dict[str, str] = {}

@@ -5,11 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from pptx import Presentation
+
 from pptforge.engine.renderer import Renderer
 from pptforge.gates.checks import run_gates
 from pptforge.models import Deck
 
-EXAMPLE_SPEC = Path(__file__).resolve().parents[1] / "examples/sample_spec.yaml"
+EXAMPLE_SPEC = Path(__file__).resolve().parents[1] / "examples" / "sample_spec.yaml"
 
 
 def test_load_and_validate() -> None:
