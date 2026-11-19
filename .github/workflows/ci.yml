@@ -49,8 +49,12 @@ jobs:
           fi
           echo "泄漏扫描通过"
       - name: 渲染逐页回看
+        timeout-minutes: 6
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq libreoffice poppler-utils
+          sudo apt-get update -qq
+          # 只装 impress 核心（--no-install-recommends）减小下载量，加 apt 重试防网络抖动
+          sudo apt-get install -y -qq --no-install-recommends \
+            -o Acquire::Retries=3 libreoffice-impress poppler-utils
           soffice --headless --convert-to pdf --outdir /tmp /tmp/sample.pptx
           pdftoppm -png -r 90 /tmp/sample.pdf /tmp/slide
       - name: 上传渲染产物

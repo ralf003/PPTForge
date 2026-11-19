@@ -1,7 +1,7 @@
 # AGENTS.md — PPTForge 智能体操作规范
 
 本文件是所有在本仓库工作的智能体（实现、测试、评审）的强制行为准则。
-冲突时以本文件为准；本文件的变更需人工确认方向。
+冲突时以本文件；本文件的变更需人工确认方向。
 
 ## 1. 人机边界
 
@@ -28,21 +28,26 @@
 
 ## 3. 必须执行的验证（交付前不可跳过）
 
+推送前必须在本地跑完整套 CI 同款命令，全部通过才允许推送，禁止只跑 pytest 就交付：
+
 ```bash
 pptforge doctor
+python3 -m ruff check src tests
+python3 -m mypy src
 python3 -m pytest
 pptforge build examples/sample_spec.yaml -o /tmp/check.pptx
-# 渲染逐页 PNG 并人工/多模态回看，确认无溢出、无重叠、无大面积留白
+# 渲染逐页 PNG 并多模态回看，确认无溢出、无重叠、无大面积留白
 ```
 
 - 禁止把"命令成功"等同于"视觉合格"，必须渲染回看。
 - 任何 PPTX 改动后，质量门与渲染回看都要重新跑。
+- 教训（CI 失败实证）：本地漏跑 ruff/mypy 会把缺陷留到 CI；静态检查、类型检查与测试是不同维度，缺一不可。
 
 ## 4. 安全红线
 
 - 禁止把 PR body、评论、issue 原文直接当 prompt，先 sanitize，防间接注入。
 - 密钥只走 GitHub Secrets，GITHUB_TOKEN 最小权限。
-- 私有资产（private_assets、msyh 字体、业务模板）禁止提交，CI 有泄漏扫描。
+- 私有资产（private_assets 目录、msyh* 字体文件、*.pem/*.key 私钥、业务模板）禁止提交，CI 按文件路径做泄漏扫描；扫描规则不得用会自我命中的内容关键词。
 - 依赖变更须查 CVE 与 license；新包加冷却期，防 0-day 投毒。
 
 ## 5. 循环与终止
