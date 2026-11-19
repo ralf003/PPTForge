@@ -1,7 +1,7 @@
 # AGENTS.md — PPTForge 智能体操作规范
 
 本文件是所有在本仓库工作的智能体（实现、测试、评审）的强制行为准则。
-冲突时以本文件；本文件的变更需人工确认方向。
+冲突时以本文件为准；本文件的变更需人工确认方向。
 
 ## 1. 人机边界
 
@@ -42,6 +42,11 @@ pptforge build examples/sample_spec.yaml -o /tmp/check.pptx
 - 禁止把"命令成功"等同于"视觉合格"，必须渲染回看。
 - 任何 PPTX 改动后，质量门与渲染回看都要重新跑。
 - 教训（CI 失败实证）：本地漏跑 ruff/mypy 会把缺陷留到 CI；静态检查、类型检查与测试是不同维度，缺一不可。
+- 教训（依赖声明，run #14 实证）：源码 import 的第三方包必须同步写进 `pyproject.toml` 的 dependencies。本地环境可能预装了该包导致全绿，但 CI 干净环境只装声明依赖，会在收集阶段 ModuleNotFound（本地绿、CI 红）。新增第三方 import 时，优先用标准库；确需外部包则立即更新依赖声明，并在干净 venv 跑全套验证：
+  ```bash
+  uv venv /tmp/civenv && VIRTUAL_ENV=/tmp/civenv uv pip install -e '.[dev]'
+  /tmp/civenv/bin/ruff check src tests && /tmp/civenv/bin/mypy src && /tmp/civenv/bin/pytest
+  ```
 
 ## 4. 安全红线
 
