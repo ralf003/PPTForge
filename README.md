@@ -10,7 +10,7 @@
 - 声明式 spec（YAML），agent 只描述意图、不写坐标
 - 投影级字号体系，默认微软雅黑（Microsoft YaHei）
 - 确定性布局引擎，原生可编辑 shape/chart/table
-- 内置质量门：schema、字号、对比度、OOXML 轴 ID 修复
+- 内置质量门：字体/字号、元素越界、WCAG 对比度、OOXML 轴 ID 修复
 - 库 / CLI / MCP 多入口
 
 ## 快速开始
