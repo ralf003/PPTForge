@@ -189,7 +189,7 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 | 本地一键验收 | `scripts/verify.sh` | 与 CI 同款链路，支持 `--skip-visual` |
 | CI 两条 job | `.github/workflows/ci.yml`：`quality`（三矩阵）、`render-preview` | render-preview 在 pdftoppm 后真跑 `check-visual`，报告 tee 到 `/tmp/visual-report.txt` 并随 artifact 上传；job 级 `continue-on-error: true` |
 | LLM 后端抽象 | `roles/llm.py`：`LLMBackend` Protocol、`ReplayBackend`、`OpenAICompatibleBackend`、`extract_json`、`default_backend` | 凭据走环境变量 `PPTFORGE_LLM_BASE_URL / API_KEY / MODEL` |
-| 设计系统常量 | `theme.py`：`Theme` / `Palette` / FontScale` / `FONT_FAMILY` | 画布 13.333 × 7.5 in，16:9 |
+| 设计系统常量 | `theme.py`：`Theme` / `Palette` / `FontScale` / `FONT_FAMILY` | 画布 13.333 × 7.5 in，16:9 |
 
 ### 7.2 未实现
 
