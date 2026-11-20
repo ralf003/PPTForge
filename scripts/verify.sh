@@ -35,7 +35,7 @@ fi
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 echo "解释器：${PYTHON}（$("${PYTHON}" --version 2>&1)）"
 
-# CLI 入口：优先 venv 内可执行文件，避免命中 PATH 上别的同名文件。
+# CLI 入口：优先 venv 内可执行文件，避免命中 PATH 上别的同名命令。
 if [[ -x "${ROOT}/.venv/bin/pptforge" ]]; then
   PPTFORGE="${ROOT}/.venv/bin/pptforge"
 else
