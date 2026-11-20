@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import json
 import shutil
 import sys
 from collections.abc import Sequence
@@ -12,6 +13,7 @@ from pathlib import Path
 from pptforge import __version__
 from pptforge.engine.renderer import Renderer
 from pptforge.models import Deck
+from pptforge.roles.reviewer import Reviewer
 from pptforge.theme import FONT_FAMILY
 
 
@@ -101,10 +103,38 @@ def cmd_validate(spec: Path) -> int:
     return 0
 
 
+def cmd_review(spec: Path, as_json: bool) -> int:
+    """跑评审委员会；有 critical 时 exit 1。"""
+    deck = Deck.load(spec)
+    verdict = Reviewer().review(deck)
+    if as_json:
+        payload = {
+            "ok": verdict.ok,
+            "findings": [
+                {
+                    "code": f.code,
+                    "severity": f.severity,
+                    "target": f.target,
+                    "message": f.message,
+                    "fix": f.fix,
+                }
+                for f in verdict.findings
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(verdict.format())
+        if verdict.ok:
+            print("结果：评审通过")
+        else:
+            print(f"结果：{len(verdict.criticals)} 条 critical，未通过")
+    return 0 if verdict.ok else 1
+
+
 def cmd_check_visual(
     pngs: Sequence[Path],
-    min_ink: float | None,
-    max_empty: float | None,
+    min_ink: float,
+    max_empty: float,
     roles: Sequence[str] | None = None,
 ) -> int:
     """对渲染后的逐页 PNG 跑视觉门：空页与大片留白。"""
@@ -145,6 +175,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_val = sub.add_parser("validate", help="仅校验 spec")
     p_val.add_argument("spec", type=Path, help="YAML spec 文件")
 
+    p_rev = sub.add_parser("review", help="跑评审委员会，逐条打印 findings")
+    p_rev.add_argument("spec", type=Path, help="YAML spec 文件")
+    p_rev.add_argument("--json", action="store_true", help="以 JSON 输出 findings")
+
     p_vis = sub.add_parser(
         "check-visual", help="对渲染后的逐页 PNG 跑视觉门（空页与大片留白）"
     )
@@ -168,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_build(args.spec, args.output)
     if args.command == "validate":
         return cmd_validate(args.spec)
+    if args.command == "review":
+        return cmd_review(args.spec, args.json)
     if args.command == "check-visual":
         roles = args.roles.split(",") if args.roles else None
         return cmd_check_visual(args.pngs, args.min_ink, args.max_empty, roles)
