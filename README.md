@@ -105,7 +105,7 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 当前是 **P0**，接口在 0.x 不承诺稳定。
 
 - 已实现：五骨架、静态质量门、视觉门、CLI（build / validate / check-visual / doctor）、单页与多页五角色端到端出 PPTX，以及 Deck 级大纲冻结（cover/section/content/summary 自动生产），静态门兜底。
-- 未实现：真实 LLM 后端产出验证、现有 PPT 的反向解析与优化、原生图表与表格渲染、MCP 入口、单 body 项骨架自适应。
+- 未实现：真实 LLM 后端产出验证、现有 PPT 的反向解析与优化、原生图表与表格渲染、MCP 入口。
 
 未实现的能力不会写进“已实现”清单。
 
