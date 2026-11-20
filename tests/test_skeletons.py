@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE
 
 from pptforge.engine.renderer import render_deck
 from pptforge.engine.skeletons import skeleton_keys
@@ -93,3 +94,89 @@ def test_track_claim_band_is_rendered(tmp_path) -> None:
         if sh.width > prs.slide_width * 0.95 and sh.height > 914400
     ]
     assert full_width_bands, "未找到整幅结论带"
+
+
+# ---- 单 body 项自适应版式 ----
+
+
+def _single_page(skeleton: str) -> Page:
+    return Page(
+        role="content",
+        skeleton=skeleton,
+        title="单条目判断句",
+        subtitle="口径句只放判断",
+        items=[Item(name="单条机制", desc="单条机制解释", value="12%")],
+        claim="结论判断句。",
+        note="留档备注",
+    )
+
+
+@pytest.mark.parametrize("skeleton", ["track", "stat", "topology"])
+def test_single_item_adaptive_passes_gates(skeleton: str, tmp_path) -> None:
+    prs = _build(_single_page(skeleton), tmp_path, f"single_{skeleton}")
+    report = run_gates(prs)
+    assert report.ok, f"{skeleton} 单条目未通过门禁：{report.issues}"
+
+
+def test_track_single_hides_multi_node_labels(tmp_path) -> None:
+    """单节点不渲染仅多元素才有意义的起点/终局标签。"""
+    prs = _build(_single_page("track"), tmp_path, "single_track")
+    texts = [
+        sh.text_frame.text
+        for sh in prs.slides[0].shapes
+        if sh.has_text_frame
+    ]
+    assert not any("起点" in t or "终局" in t for t in texts)
+
+
+def test_stat_single_item_without_value_passes_gates(tmp_path) -> None:
+    """无量化值的 stat 单条目：不出大号占位符，过静态门。"""
+    page = Page(
+        role="content", skeleton="stat", title="单条目判断句",
+        items=[Item(name="核心机制", desc=None, value=None)],
+        claim="结论判断句。", note="留档备注",
+    )
+    prs = _build(page, tmp_path, "stat_no_value")
+    report = run_gates(prs)
+    assert report.ok, report.issues
+    texts = [sh.text_frame.text for sh in prs.slides[0].shapes if sh.has_text_frame]
+    assert not any(t.strip() == "—" for t in texts)
+
+
+def test_topology_single_hides_layer_arrows(tmp_path) -> None:
+    """单层级不渲染层间箭头。"""
+    prs = _build(_single_page("topology"), tmp_path, "single_topo")
+
+    def _is_arrow(sh) -> bool:
+        try:
+            return sh.auto_shape_type == MSO_SHAPE.DOWN_ARROW
+        except ValueError:
+            return False
+
+    arrows = [sh for sh in prs.slides[0].shapes if _is_arrow(sh)]
+    assert arrows == []
+
+
+# ---- 容量硬门：超容量 / 空条目抛错，不静默截断或退化 ----
+
+
+@pytest.mark.parametrize(
+    "skeleton,cap",
+    [("track", 4), ("stat", 4), ("split", 4), ("topology", 5)],
+)
+def test_skeleton_rejects_over_capacity(skeleton: str, cap: int, tmp_path) -> None:
+    items = [Item(name=f"要点{i}") for i in range(cap + 1)]
+    page = Page(
+        role="content", skeleton=skeleton, title="标题", items=items, note="备注"
+    )
+    with pytest.raises(ValueError, match="容量上限"):
+        render_deck(_deck(page), tmp_path / "over.pptx")
+
+
+@pytest.mark.parametrize("skeleton", ["track", "stat", "topology", "split"])
+def test_skeleton_rejects_empty_items(skeleton: str, tmp_path) -> None:
+    page = Page(
+        role="content", skeleton=skeleton, title="标题", items=[], note="备注"
+    )
+    with pytest.raises(ValueError, match="至少需要一个条目"):
+        render_deck(_deck(page), tmp_path / "empty.pptx")
