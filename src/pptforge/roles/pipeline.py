@@ -240,12 +240,16 @@ class Pipeline:
         return Delivery(page=page, verdict=verdict, iterations=iterations)
 
     def _run_static_plan(
-        self, plan: DeckPagePlan, page_no: int, content_pages: list[Page] | None
+        self,
+        plan: DeckPagePlan,
+        page_no: int,
+        content_pages: list[Page] | None,
+        thesis: str | None = None,
     ) -> Delivery:
         """cover/section/summary：不经研究直接出页，review 出现 critical 即构造缺陷。"""
         if plan.page_role == "summary":
             page = design_summary(
-                plan, content_pages or [], deck_title=self._deck_title
+                plan, content_pages or [], deck_title=self._deck_title, thesis=thesis
             )
         else:
             page = design_page(plan, None, deck_title=self._deck_title)
@@ -269,6 +273,11 @@ class Pipeline:
         cover/section 不跑 Researcher；content 走研究与打回循环；
         summary 在所有 content 完成后基于其判断句汇总。
         """
+        # 编排层防御纵深：入口重放 schema 校验，与 Director 出口口径对齐，
+        # 外部直构造的缺陷大纲不依赖调用方记得先过 validate()。
+        problems = brief.validate()
+        if problems:
+            raise ValueError("Deck 大纲校验失败：" + "；".join(problems))
         if not gate(brief):
             raise RuntimeError("Deck 大纲确认门未放行，已中止（未进入生产阶段）")
 
@@ -285,7 +294,7 @@ class Pipeline:
                 deliveries.append(delivery)
             else:
                 deliveries.append(
-                    self._run_static_plan(plan, i, content_pages)
+                    self._run_static_plan(plan, i, content_pages, brief.thesis)
                 )
 
         deck = Deck(title=brief.title, pages=[d.page for d in deliveries])
