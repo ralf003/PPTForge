@@ -13,10 +13,14 @@ from __future__ import annotations
 import re
 
 from pptforge.models import Item, Page
-from pptforge.roles.schemas import ResearchBrief
+from pptforge.roles.reviewer import MATURITY_WORDS, Verdict
+from pptforge.roles.schemas import ClaimCard, ResearchBrief
 
 # 只认带量纲的数：arXiv 编号、年份、步数都不该被当成指标
 _METRIC = re.compile(r"\d+(?:\.\d+)?(?:%|万|亿|倍)")
+
+_DESC_LIMIT = 24
+_TITLE_LIMIT = 28
 
 
 def _short_name(claim: str, limit: int = 8) -> str:
@@ -53,6 +57,15 @@ def pick_skeleton(brief: ResearchBrief) -> str:
     return "track"
 
 
+def _build_note(cards: list[ClaimCard]) -> str:
+    """证据与缺口一律进备注，不占图面。"""
+    return "\n".join(
+        f"[{i}] {c.claim}\n支持：{c.support}\n证据：" + "；".join(c.evidence)
+        + (f"\n缺口：{c.gap}" if c.gap else "")
+        for i, c in enumerate(cards, start=1)
+    )
+
+
 def design(brief: ResearchBrief, skeleton: str | None = None) -> Page:
     """主张卡 → 一页可渲染的 Page。最后一张卡升格为结论带（它是"往哪走"）。"""
     problems = brief.validate()
@@ -86,18 +99,102 @@ def design(brief: ResearchBrief, skeleton: str | None = None) -> Page:
             for c in body_cards
         ]
 
-    # 证据与缺口一律进备注，不占图面
-    note = "\n".join(
-        f"[{i}] {c.claim}\n支持：{c.support}\n证据：" + "；".join(c.evidence)
-        + (f"\n缺口：{c.gap}" if c.gap else "")
-        for i, c in enumerate(cards, start=1)
-    )
+    # 副标题取 Director 冻结的第一条图面原则；没有就留 None，禁止编造
+    subtitle = brief.brief.principles[0] if brief.brief.principles else None
 
     return Page(
         role="content",
         skeleton=sk,
         title=brief.brief.claim,
+        subtitle=subtitle,
         items=items,
         claim=claim,
-        note=note,
+        note=_build_note(cards),
     )
+
+
+def repair(brief: ResearchBrief, page: Page, verdict: Verdict) -> Page:
+    """按 verdict 里的 finding.code 做确定性修复，返回新 Page，不改入参。
+
+    找不到对应修复的 code 原样保留；RV003（缺图）不修复——图无法凭空造，
+    保持 finding 让打回循环耗尽后升级人工。修复后重新跑 Page.validate()。
+    """
+    problems = brief.validate()
+    if problems:
+        raise ValueError("研究产物校验失败：" + "；".join(problems))
+
+    codes = {f.code for f in verdict.findings}
+    new = Page(
+        role=page.role,
+        title=page.title,
+        subtitle=page.subtitle,
+        items=[Item(name=i.name, desc=i.desc, value=i.value, label=i.label) for i in page.items],
+        note=page.note,
+        skeleton=page.skeleton,
+        claim=page.claim,
+        image=page.image,
+    )
+
+    # RV001：备注缺失，从主张卡重建证据/缺口/口径留档
+    if "RV001" in codes:
+        new.note = _build_note(brief.cards)
+
+    # RV002：content 页无骨架，按内容形态重选
+    if "RV002" in codes:
+        new.skeleton = pick_skeleton(brief)
+
+    # RV004：描述压到关键词长度，超出截断加省略号
+    if "RV004" in codes:
+        for item in new.items:
+            if item.desc and len(item.desc.strip()) > _DESC_LIMIT:
+                item.desc = item.desc.strip()[:_DESC_LIMIT] + "…"
+
+    # RV005：stat 条目补不出量化值时，骨架降为 track，不再强求大数字
+    if "RV005" in codes and new.skeleton == "stat":
+        new.skeleton = "track"
+
+    # RV006：状态/成熟度词从图面字段剔除，追加进备注
+    if "RV006" in codes:
+        new.note = _strip_maturity(new)
+
+    # RV007：标题截断到判断句长度
+    if "RV007" in codes and new.title and len(new.title.strip()) > _TITLE_LIMIT:
+        new.title = new.title.strip()[:_TITLE_LIMIT] + "…"
+
+    problems = new.validate()
+    if problems:
+        raise ValueError("修复后校验失败：" + "；".join(problems))
+    return new
+
+
+def _strip_maturity(page: Page) -> str | None:
+    """把图面字段里的成熟度/状态词移进备注。
+
+    标题剔除后若为空会丢判断句，此时回退原标题；该条 RV006 保持命中，
+    交由循环耗尽后升级人工，不伪造一个空标题。
+    """
+    moved: list[str] = []
+
+    def clean(text: str | None) -> str | None:
+        if not text:
+            return text
+        out = text
+        for word in MATURITY_WORDS:
+            if word in out:
+                moved.append(word)
+                out = out.replace(word, "")
+        stripped = re.sub(r"\s+", " ", out).strip(" ，,；;：:")
+        return stripped or None
+
+    page.title = clean(page.title) or page.title
+    page.subtitle = clean(page.subtitle)
+    page.claim = clean(page.claim)
+    for item in page.items:
+        item.name = clean(item.name) or item.name
+        item.desc = clean(item.desc)
+        item.value = clean(item.value)
+
+    suffix = "状态词移入备注：" + "、".join(dict.fromkeys(moved)) if moved else None
+    if suffix is None:
+        return page.note
+    return f"{page.note}\n{suffix}" if page.note else suffix
