@@ -17,18 +17,30 @@ from pathlib import Path
 from pptforge.engine import bridge
 from pptforge.gates.checks import GateReport
 from pptforge.models import Deck, Page
-from pptforge.roles.designer import design, repair
+from pptforge.roles.designer import design, design_page, design_summary, repair
 from pptforge.roles.director import Director
 from pptforge.roles.llm import LLMBackend
 from pptforge.roles.researcher import Researcher
 from pptforge.roles.reviewer import Reviewer, Verdict
-from pptforge.roles.schemas import PageBrief, ResearchBrief
+from pptforge.roles.schemas import (
+    DeckBrief,
+    DeckPagePlan,
+    PageBrief,
+    ResearchBrief,
+)
 
 # 确认门：接收冻结的 PageBrief，返回是否放行
 Gate = Callable[[PageBrief], bool]
 
+# Deck 级确认门：接收一次冻结的整份 DeckBrief，返回是否放行
+DeckGate = Callable[[DeckBrief], bool]
+
 
 def auto_gate(_brief: PageBrief) -> bool:
+    return True
+
+
+def auto_deck_gate(_brief: DeckBrief) -> bool:
     return True
 
 
@@ -190,6 +202,93 @@ class Pipeline:
             title=deck_title or f"PPTForge {len(specs)} 页 Deck",
             pages=[d.page for d in deliveries],
         )
+        pptx, report = bridge.render_deck_with_report(deck, output)
+        if not report.ok:
+            raise bridge.EngineQualityError(report.issues)
+        return DeckDelivery(pptx=pptx, deliveries=deliveries, gate_report=report)
+
+    # ---- Deck 级大纲冻结 + 非 content 页生产（#39） ----
+
+    def brief_deck(
+        self,
+        topic: str,
+        audience: str = "通用技术听众",
+        structure: tuple[str, ...] | None = None,
+    ) -> DeckBrief:
+        """委托 Director 一次冻结整份大纲，可单独确认后再出片。"""
+        return self.director.brief_deck(topic, audience, structure)
+
+    def _run_content_plan(self, plan: DeckPagePlan) -> Delivery:
+        """content 页：冻结规划 → 研究 → 设计 → 打回循环，逻辑与 build_page 同构。"""
+        page_brief = PageBrief(
+            topic=plan.topic,
+            claim=plan.claim,
+            page_role="content",
+            audience=self._audience,
+            principles=list(plan.principles),
+        )
+        research = self.researcher.research(page_brief)
+        page = design_page(plan, research, deck_title=self._deck_title)
+        verdict = self.reviewer.review_page(page, 1)
+        iterations = 1
+        while not verdict.ok and iterations < self.max_iter:
+            page = repair(research, page, verdict)
+            verdict = self.reviewer.review_page(page, 1)
+            iterations += 1
+        if not verdict.ok:
+            raise ReviewExhaustedError(verdict, iterations)
+        return Delivery(page=page, verdict=verdict, iterations=iterations)
+
+    def _run_static_plan(
+        self, plan: DeckPagePlan, page_no: int, content_pages: list[Page] | None
+    ) -> Delivery:
+        """cover/section/summary：不经研究直接出页，review 出现 critical 即构造缺陷。"""
+        if plan.page_role == "summary":
+            page = design_summary(
+                plan, content_pages or [], deck_title=self._deck_title
+            )
+        else:
+            page = design_page(plan, None, deck_title=self._deck_title)
+        verdict = self.reviewer.review_page(page, page_no)
+        if not verdict.ok:
+            # 非 content 页没有 repair 路径：critical 说明出页构造有 bug，直接暴露不静默
+            raise RuntimeError(
+                f"{plan.page_role} 页（P{page_no}）评审出现 critical："
+                + "；".join(f.message for f in verdict.criticals)
+            )
+        return Delivery(page=page, verdict=verdict, iterations=1)
+
+    def build_from_brief(
+        self,
+        brief: DeckBrief,
+        output: str | Path,
+        gate: DeckGate = auto_deck_gate,
+    ) -> DeckDelivery:
+        """按冻结大纲出整份 Deck：页型分流，整份过静态门。
+
+        cover/section 不跑 Researcher；content 走研究与打回循环；
+        summary 在所有 content 完成后基于其判断句汇总。
+        """
+        if not gate(brief):
+            raise RuntimeError("Deck 大纲确认门未放行，已中止（未进入生产阶段）")
+
+        # 暂存出片上下文，供内部方法使用，避免长参数列表
+        self._audience = brief.audience
+        self._deck_title = brief.title
+
+        deliveries: list[Delivery] = []
+        content_pages: list[Page] = []
+        for i, plan in enumerate(brief.pages, start=1):
+            if plan.page_role == "content":
+                delivery = self._run_content_plan(plan)
+                content_pages.append(delivery.page)
+                deliveries.append(delivery)
+            else:
+                deliveries.append(
+                    self._run_static_plan(plan, i, content_pages)
+                )
+
+        deck = Deck(title=brief.title, pages=[d.page for d in deliveries])
         pptx, report = bridge.render_deck_with_report(deck, output)
         if not report.ok:
             raise bridge.EngineQualityError(report.issues)
