@@ -1,20 +1,20 @@
 # PPTForge
 
-声明式工程化 PPT 生产工具链，产出**本地可编辑 PPTX**，覆盖两个场景：
+声明式工程化 PPT 生产工具链，产出**本地可编辑 PPTX**。场景现状：
 
-- **从零生成**：idea → 大纲 → 声明式 spec → PPTX
-- **现有 PPT 优化**：全页渲染诊断 → 编辑式改造 → 质量门验收
+- **从零生成（已实现）**：声明式 spec → PPTX；角色层单页闭环见 DESIGN.md
+- **现有 PPT 优化（未实现）**：全页渲染诊断 → 编辑式改造 → 质量门验收，当前无既有 PPTX 反向解析与回写代码
 
 ## 特性
 
 - 声明式 spec（YAML），agent 只描述意图、不写坐标
 - **骨架库**：页型沉淀为可复用骨架，agent 只"选骨架 + 填内容 + 定强调"
 - 投影级字号体系，默认微软雅黑（Microsoft YaHei）
-- 确定性布局引擎，原生可编辑 shape/chart/table
+- 确定性布局引擎，原生可编辑 shape（chart/table 渲染未实现；轴 ID 修复仅作用于已有图表）
 - 静态质量门：字体/字号、元素越界、WCAG 对比度、文本溢出、区域重叠、OOXML 轴 ID 修复
 - 视觉门：空页与大片留白，按页型分档
-- 五角色编排：Director / Researcher / Designer / Engine / Reviewer
-- 库 / CLI / MCP 多入口
+- 单页角色闭环：Director → Researcher → Designer → Reviewer，不合格确定性修复重评（`max_iter=3`）；Reviewer 已实现，Engine 仅在 CLI `build` 路径接入，闭环目前到单页、不出 PPTX
+- 库 / CLI 入口（MCP 入口未实现）
 
 ## 骨架库
 
@@ -91,6 +91,20 @@ pptforge doctor
 pptforge build examples/sample_spec.yaml -o out.pptx
 ```
 
+评审 spec（确定性规则，零网络）；有 critical 时退出码 1，`--json` 输出结构化 findings：
+
+```bash
+pptforge review examples/sample_spec.yaml
+pptforge review examples/sample_spec.yaml --json
+```
+
+本地一键跑 CI 同款链路（doctor / ruff / mypy / pytest / build / 渲染 / 视觉门）：
+
+```bash
+bash scripts/verify.sh                # 全量
+bash scripts/verify.sh --skip-visual  # 跳过 soffice / pdftoppm / check-visual
+```
+
 ## 工程状态
 
-当前为 P0 工程骨架，接口在 0.x 版本不承诺稳定。
+当前为 P0 工程骨架，接口在 0.x 版本不承诺稳定。实现边界与未落地事项见 `DESIGN.md` 第 7 节；工作流程见 `WORKFLOW.md`。
