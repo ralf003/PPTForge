@@ -35,7 +35,7 @@ fi
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 echo "解释器：${PYTHON}（$("${PYTHON}" --version 2>&1)）"
 
-# CLI 入口：优先 venv 内可执行文件，避免命中 PATH 上别的同名命令。
+# CLI 入口：优先 venv 内可执行文件，避免命中 PATH 上别的同名文件。
 if [[ -x "${ROOT}/.venv/bin/pptforge" ]]; then
   PPTFORGE="${ROOT}/.venv/bin/pptforge"
 else
@@ -52,6 +52,10 @@ E2E_PPTX="/tmp/verify_e2e.pptx"
 E2E_PDF="/tmp/verify_e2e.pdf"
 E2E_SLIDE_PREFIX="/tmp/verify_e2e-slide"
 E2E_SLIDE_GLOB="${E2E_SLIDE_PREFIX}-*.png"
+DECK_PPTX="/tmp/verify_deck.pptx"
+DECK_PDF="/tmp/verify_deck.pdf"
+DECK_SLIDE_PREFIX="/tmp/verify_deck-slide"
+DECK_SLIDE_GLOB="${DECK_SLIDE_PREFIX}-*.png"
 
 STEP="（未开始）"
 trap 'code=$?; echo ""; echo "✗ 验收失败：步骤 [${STEP}] 退出码 ${code}"; exit 1' ERR
@@ -94,6 +98,13 @@ else
   run_step "e2e soffice 转 PDF" soffice --headless --convert-to pdf --outdir /tmp "${E2E_PPTX}"
   run_step "e2e pdftoppm 出图" pdftoppm -png -r 110 "${E2E_PDF}" "${E2E_SLIDE_PREFIX}"
   run_step "e2e check-visual 视觉门" "${PPTFORGE}" check-visual ${E2E_SLIDE_GLOB} --roles content
+
+  # ---- Deck 级多页闭环：ReplayBackend 出三页 → 渲染 → 逐页视觉门 ----
+  run_step "多页 e2e 闭环出片" "${PYTHON}" scripts/e2e_deck_pipeline.py "${DECK_PPTX}"
+  rm -f "${DECK_PDF}" ${DECK_SLIDE_GLOB}
+  run_step "多页 soffice 转 PDF" soffice --headless --convert-to pdf --outdir /tmp "${DECK_PPTX}"
+  run_step "多页 pdftoppm 出图" pdftoppm -png -r 110 "${DECK_PDF}" "${DECK_SLIDE_PREFIX}"
+  run_step "多页 check-visual 视觉门" "${PPTFORGE}" check-visual ${DECK_SLIDE_GLOB} --roles content,content,content
 fi
 
 END_TS="$(date +%s)"
