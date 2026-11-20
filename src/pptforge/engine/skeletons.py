@@ -31,6 +31,15 @@ CONTENT_BOTTOM = 7.10
 CLAIM_BAND_TOP = 5.95
 CLAIM_BAND_H = 1.55
 
+# 各骨架正文条目容量上限；超容量抛 ValueError，不静默截断。
+# hero 不消费 items，不设容量口径。
+SKELETON_CAPACITY: dict[str, int] = {
+    "track": 4,
+    "stat": 4,
+    "topology": 5,
+    "split": 4,
+}
+
 
 def _no_shadow(shape) -> None:
     """彻底去效果：add_shape 会带 <p:style> 引用主题 effectRef，只清 spPr 无效。"""
@@ -125,24 +134,65 @@ def _node_color(p, i: int, n: int) -> str:
 
 # ---------------- 骨架：track（叙事轨迹） ----------------
 def _track(r: Renderer, page: Page) -> None:
-    """一条轨迹串起若干节点，节点符号递增代表事态加剧，底部可挂结论带。"""
+    """一条轨迹串起若干节点，节点符号递增代表事态加剧，底部可挂结论带。
+
+    单 body 项时切换居中放大版式：隐藏仅多元素才有意义的轨迹线与
+    起点/终局标签，节点与文案在内容区水平 + 垂直居中；不加撑满底板。
+    """
     theme = r.theme
     p, s = theme.palette, theme.scale
     slide = r._add_slide(p.bg)
     y0 = _header(r, slide, page, theme)
 
-    nodes = page.items[:4]
+    nodes = page.items
     n = len(nodes)
-    if n == 0:
+
+    limit = CLAIM_BAND_TOP - 0.15 if page.claim else CONTENT_BOTTOM
+
+    if n == 1:
+        item = nodes[0]
+        color = _node_color(p, 0, 1)
+        cx = theme.slide_width_in / 2
+        block_w = 7.6
+        d = 0.70
+        desc_h = 0.62 if item.desc else 0.0
+        value_h = 0.50 if item.value else 0.0
+        block_h = d + 0.16 + 0.60 + (0.16 + desc_h if item.desc else 0.0)
+        block_h += 0.16 + value_h if item.value else 0.0
+        top = y0 + max(0.10, (limit - y0 - block_h) / 2)
+
+        cy = top + d / 2
+        # 居中强调细线：保留轨迹语义并切断中段侧带；不加撑满底板
+        _rect(slide, cx - 5.17, cy - 0.02, 10.33, 0.04, p.mute)
+        _circle(slide, cx, cy, d, color)
+        ty = top + d + 0.16
+        r._add_text(
+            slide, cx - block_w / 2, ty, block_w, 0.60,
+            [(item.name, s.item_name + 6, p.dark, True)], align=CENTER,
+        )
+        ty += 0.60 + (0.16 if item.desc else 0.0)
+        if item.desc:
+            r._add_text(
+                slide, cx - block_w / 2, ty, block_w, desc_h,
+                [(item.desc, s.body, p.mute, False)], align=CENTER,
+            )
+            ty += desc_h + 0.16
+        if item.value:
+            r._add_text(
+                slide, cx - block_w / 2, ty, block_w, value_h,
+                [(item.value, s.caption + 4, color, True)], align=CENTER,
+            )
+
+        if page.claim:
+            _claim_band(r, slide, page, theme)
         _notes(slide, page)
         return
 
-    limit = CLAIM_BAND_TOP - 0.15 if page.claim else CONTENT_BOTTOM
     y_track = y0 + (limit - y0) * 0.66
     # 节点横向等距铺满，卡宽随节点数自适应
     span0, span1 = 2.1, 11.0
     step = (span1 - span0) / (n - 1) if n > 1 else 0.0
-    card_w = min(3.8, max(2.4, step - 0.35)) if n > 1 else 3.8
+    card_w = min(3.8, max(2.4, step - 0.35))
 
     # 轨迹线覆盖节点范围，两端标注方向
     _rect(slide, 1.35, y_track - 0.02, 10.4, 0.04, p.mute)
@@ -189,21 +239,74 @@ def _value_size(text: str) -> int:
 
 
 def _stat(r: Renderer, page: Page) -> None:
-    """横向并列若干指标：大数字主导，短线分隔，整块在内容区居中，底部可挂结论带。"""
+    """横向并列若干指标：大数字主导，短线分隔，整块在内容区居中，底部可挂结论带。
+
+    单 body 项时为居中放大版式：指标块占满内容宽度、字号上调一档，
+    不再预留多列间距；不加撑满底板。
+    """
     theme = r.theme
     p, s = theme.palette, theme.scale
     slide = r._add_slide(p.bg)
     y0 = _header(r, slide, page, theme)
 
-    items = page.items[:4]
+    items = page.items
     n = len(items)
-    if n == 0:
-        _notes(slide, page)
-        return
 
     limit = CLAIM_BAND_TOP - 0.15 if page.claim else CONTENT_BOTTOM
     x0, x1 = 1.00, 12.33
     step = (x1 - x0) / n
+
+    if n == 1:
+        item = items[0]
+        cx = (x0 + x1) / 2
+        inner = x1 - x0 - 1.0
+        raw_value = item.value
+        rule_w = x1 - x0
+
+        if raw_value and raw_value.strip():
+            value = raw_value.strip()
+            block_h = 1.50 + 0.16 + 0.50 + 0.85
+            top = y0 + max(0.10, (limit - y0 - block_h) / 2)
+            r._add_text(
+                slide, cx - inner / 2, top, inner, 1.50,
+                [(value, min(66, _value_size(value) + 8), p.blue, True)],
+                align=CENTER, anchor=MIDDLE,
+            )
+            _rect(slide, cx - rule_w / 2, top + 1.62, rule_w, 0.06, p.blue)
+            r._add_text(
+                slide, cx - inner / 2, top + 1.78, inner, 0.50,
+                [(item.name, s.item_name + 2, p.dark, True)], align=CENTER,
+            )
+            if item.desc:
+                r._add_text(
+                    slide, cx - inner / 2, top + 2.34, inner, 0.85,
+                    [(item.desc, s.body, p.mute, False)], align=CENTER,
+                )
+        else:
+            # 无量化值：不渲染大号占位符；名称作为主元素落在一条全宽内容条内
+            # （与 topology 层条同一组件语言，条体承载名称、非装饰空底板），
+            # desc 居中其下，保留 stat 风格短强调线。
+            bar_h = 1.60 if not item.desc else 1.30
+            block_h = bar_h + 0.16 + (0.85 if item.desc else 0.0)
+            top = y0 + max(0.10, (limit - y0 - block_h) / 2)
+            _rect(slide, x0, top, x1 - x0, bar_h, p.tint, shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+            _rect(slide, x0 + 0.04, top + 0.08, 0.10, bar_h - 0.16, p.dark)
+            r._add_text(
+                slide, x0 + 0.36, top, inner, bar_h,
+                [(item.name, min(36, s.item_name + 12), p.dark, True)],
+                align=CENTER, anchor=MIDDLE,
+            )
+            _rect(slide, cx - 1.20, top + bar_h + 0.12, 2.40, 0.06, p.blue)
+            if item.desc:
+                r._add_text(
+                    slide, cx - inner / 2, top + bar_h + 0.28, inner, 0.85,
+                    [(item.desc, s.body, p.mute, False)], align=CENTER,
+                )
+        if page.claim:
+            _claim_band(r, slide, page, theme)
+        _notes(slide, page)
+        return
+
     # 块高由内容决定，再在内容区垂直居中——不靠撑满底板制造空卡片
     block_h = 1.30 + 0.16 + 0.50 + 0.80
     top = y0 + max(0.10, (limit - y0 - block_h) / 2)
@@ -234,25 +337,48 @@ def _stat(r: Renderer, page: Page) -> None:
 
 # ---------------- 骨架：topology（分层架构） ----------------
 def _topology(r: Renderer, page: Page) -> None:
-    """自上而下的分层架构：层条 + 左侧层级标识 + 层间箭头，底座层加重。"""
+    """自上而下的分层架构：层条 + 左侧层级标识 + 层间箭头，底座层加重。
+
+    单 body 项时为居中放大版式：层条加高并在内容区垂直居中，
+    层间箭头本就无第二节点可指，自动隐藏；不加撑满底板。
+    """
     theme = r.theme
     p, s = theme.palette, theme.scale
     slide = r._add_slide(p.bg)
     y0 = _header(r, slide, page, theme)
 
-    layers = page.items[:5]
+    layers = page.items
     n = len(layers)
-    if n == 0:
+
+    limit = CLAIM_BAND_TOP - 0.15 if page.claim else CONTENT_BOTTOM
+    x, w = 1.00, 11.33
+    label_w = 1.72
+
+    if n == 1:
+        item = layers[0]
+        box_h = min(2.20, limit - y0)
+        top = y0 + max(0.10, (limit - y0 - box_h) / 2)
+        fill = p.tint
+        _rect(slide, x, top, w, box_h, fill, shape=MSO_SHAPE.ROUNDED_RECTANGLE)
+        _rect(slide, x + 0.04, top + 0.08, 0.10, box_h - 0.16, p.dark)
+        r._add_text(
+            slide, x + 0.36, top, label_w, box_h,
+            [(item.name, s.item_name + 2, p.dark, True)], anchor=MIDDLE,
+        )
+        if item.desc:
+            r._add_text(
+                slide, x + 0.36 + label_w, top, w - label_w - 0.90, box_h,
+                [(item.desc, s.body, p.mute, False)], anchor=MIDDLE,
+            )
+        if page.claim:
+            _claim_band(r, slide, page, theme)
         _notes(slide, page)
         return
 
     gap = 0.30 if n >= 4 else 0.40
     # 有结论带时只在其上方排布，与 track/stat 共用同一垂直边界；
     # 层条撑满可用高度（设 1.60 上限保版式），修掉 n<4 时底部整片留白。
-    limit = CLAIM_BAND_TOP - 0.15 if page.claim else CONTENT_BOTTOM
     box_h = min(1.60, (limit - y0 - gap * (n - 1)) / n)
-    x, w = 1.00, 11.33
-    label_w = 1.72
 
     for i, item in enumerate(layers):
         y = y0 + i * (box_h + gap)
@@ -358,7 +484,7 @@ def _split(r: Renderer, page: Page) -> None:
             [(page.subtitle, s.section_label + 1, p.cyan, False)],
         )
 
-    items = page.items[:4]
+    items = page.items
     top = 2.20
     bottom = 7.02
     row = (bottom - top) / max(1, len(items))
@@ -386,11 +512,24 @@ REGISTRY: dict[str, Callable[[Renderer, Page], None]] = {
 
 
 def render_skeleton(r: Renderer, page: Page) -> None:
-    """按 page.skeleton 分发；未知骨架直接报错，不静默降级。"""
+    """按 page.skeleton 分发；未知骨架直接报错，不静默降级。
+
+    带容量口径的骨架在分发前硬校验：空条目页与超容量条目直接抛
+    ValueError，不静默退化为标题页、不静默截断多余条目。
+    """
     key = page.skeleton or ""
     fn = REGISTRY.get(key)
     if fn is None:
         raise ValueError(f"未知骨架 skeleton={key!r}，可选 {tuple(REGISTRY)}")
+    cap = SKELETON_CAPACITY.get(key)
+    if cap is not None:
+        n = len(page.items)
+        if n == 0:
+            raise ValueError(f"骨架 {key} 至少需要一个条目，空条目页不静默退化为标题页")
+        if n > cap:
+            raise ValueError(
+                f"骨架 {key} 容量上限 {cap} 条，收到 {n} 条；超出条目不得静默截断"
+            )
     fn(r, page)
 
 
