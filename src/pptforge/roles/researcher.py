@@ -31,16 +31,61 @@ class Researcher:
             topic=brief.topic, claim=brief.claim, audience=brief.audience
         )
         data = extract_json(self.backend.complete(prompt))
+        if not isinstance(data, dict):
+            raise ValueError("Researcher 产物校验失败：后端输出顶层必须是 JSON 对象")
         raw_cards = data.get("cards", [])
-        cards = [
-            ClaimCard(
-                claim=str(c["claim"]),
-                support=str(c["support"]),
-                evidence=[str(e) for e in c.get("evidence", [])],
-                gap=(str(c["gap"]) if c.get("gap") else None),
+        if not isinstance(raw_cards, list):
+            raise ValueError("Researcher 产物校验失败：cards 必须是数组")
+
+        cards: list[ClaimCard] = []
+        problems: list[str] = []
+        for i, raw in enumerate(raw_cards, start=1):
+            if not isinstance(raw, dict):
+                problems.append(f"主张卡{i}：结构非法，必须是对象")
+                continue
+            claim = raw.get("claim")
+            support = raw.get("support")
+            if not isinstance(claim, str) or not claim.strip():
+                problems.append(f"主张卡{i}：claim 缺失或为空")
+                continue
+            if not isinstance(support, str) or not support.strip():
+                problems.append(f"主张卡{i}：support 缺失或为空")
+                continue
+
+            raw_evidence = raw.get("evidence", [])
+            if raw_evidence is None:
+                raw_evidence = []
+            if not isinstance(raw_evidence, list):
+                # 标量 / dict 不做隐式转换（避免字符串被逐字符拆开、dict 取键）
+                problems.append(f"主张卡{i}：evidence 必须是字符串数组")
+                continue
+            evidence: list[str] = []
+            evidence_bad = False
+            for entry in raw_evidence:
+                if not isinstance(entry, str):
+                    evidence_bad = True
+                    break
+                entry = entry.strip()
+                if entry:
+                    evidence.append(entry)
+            if evidence_bad:
+                problems.append(f"主张卡{i}：evidence 条目必须是字符串")
+                continue
+
+            gap = raw.get("gap")
+            gap_text = gap.strip() if isinstance(gap, str) and gap.strip() else None
+            cards.append(
+                ClaimCard(
+                    claim=claim.strip(),
+                    support=support.strip(),
+                    evidence=evidence,
+                    gap=gap_text,
+                )
             )
-            for c in raw_cards
-        ]
+
+        if problems:
+            raise ValueError("Researcher 产物校验失败：" + "；".join(problems))
+
         result = ResearchBrief(brief=brief, cards=cards)
         problems = result.validate()
         if problems:
