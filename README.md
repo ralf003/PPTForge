@@ -69,7 +69,7 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 ```yaml
 - role: content
   skeleton: track
-  title: 规模化的瓶颈是长程任务失败机理
+  title: 规模化的瓶颈是长程轨迹与治理
   items:
     - name: 误差级联
       desc: 单步高成功率在长链上坍缩
@@ -91,7 +91,7 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 | 墨迹覆盖率 | ≥ 15% | 低于即判空页，抓配图没加载 |
 | 最大空白块 | ≤ 28% | 抓“上半屏空一片” |
 
-封面、分隔页单独放宽——那里的留白是设计意图；深底满版页不参与留白判定——背景本身是元素。
+封面、分隔页单独放宽——那里的留白是设计意图；深底满版页不参与留白判定——背景本身就是元素。
 
 ## 设计哲学
 
