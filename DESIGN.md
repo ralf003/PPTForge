@@ -59,7 +59,7 @@ Director.brief_page ──▶ PageBrief ──gate(Gate)──▶ Researcher.res
 
 两点现状约束（详见第 7 节）：
 
-- `Pipeline.build_page()` 闭环在 `Page` 处结束，**不经过骨架层与渲染层**；渲染层只在 CLI `build` 路径被调用。
+- `Pipeline.build_page()` 闭环在 `Page` 处结束，本身不经过骨架层与渲染层；`Pipeline.build_pptx()` 在其后经 `engine/bridge.py` 接骨架层与渲染层出单页 PPTX 并过静态门。CLI `build` 路径仍独立走 YAML spec。
 - 角色层一次只处理一页，没有 Deck 级多页编排。
 
 ## 4. 角色职责与交接契约
@@ -70,14 +70,15 @@ Director.brief_page ──▶ PageBrief ──gate(Gate)──▶ Researcher.res
 | Researcher | 类 `Researcher`（`roles/researcher.py`） | `ResearchBrief`（brief + `ClaimCard[]`）；`ClaimCard` 含 claim / support / evidence / gap | `ResearchBrief.validate()` → 逐卡 `ClaimCard.validate()`：claim、support 非空，evidence 至少一条 | 证据不足写进 `gap`，禁止编造；当前后端不具备联网能力，接地需调用方提供后端 |
 | Designer | **模块级函数集合**（`roles/designer.py`）：`design` / `repair` / `pick_skeleton`，无独立角色类 | `Page` | `design()` 先跑 `ResearchBrief.validate()`；`repair()` 修复后跑 `Page.validate()` | 只产语义与骨架选择，不产坐标；确定性规则是 LLM 不可用时的替身 |
 | Reviewer | 类 `Reviewer`（`roles/reviewer.py`） | `Verdict`（`Finding[]`：code / severity / target / message / fix） | `Verdict.ok`：无 critical 即放行；warning / info 不阻断 | `backend=None` 纯确定性零网络；接后端时语义 findings 最高 warning，不构成硬门 |
-| Engine（渲染引擎） | 类 `Renderer`（`engine/renderer.py`）+ 骨架函数（`engine/skeletons.py`） | PPTX 文件 | `Renderer.render()` 先跑 `Deck.validate()` | **未接入 Pipeline 闭环**；当前只被 CLI `cmd_build` 调用（`cli.py` 中 `Renderer().save(deck, output)`） |
+| Engine（渲染引擎） | 类 `Renderer`（`engine/renderer.py`）+ 骨架函数（`engine/skeletons.py`）+ 桥接 `engine/bridge.py` | PPTX 文件 | `Renderer.render()` 先跑 `Deck.validate()`；`bridge.render_verified` 重开产物跑 `run_gates` | 经 `bridge` 被 `Pipeline.build_pptx` 接入单页闭环（静态门不通过抛 `EngineQualityError`）；CLI `cmd_build` 仍直调 `Renderer().save(deck, output)` |
 
 交接纪律（`roles/pipeline.py` 模块docstring）：角色之间只传递经过校验的结构化产物，禁止把原始外部文本直接拼进下游 prompt。
 
-`Pipeline` 的两条入口：
+`Pipeline` 的三条入口：
 
 - `Pipeline.run()`：保持旧语义，只串 Director → gate → Researcher，返回 `ResearchBrief`，不进 Designer 与 Reviewer。
 - `Pipeline.build_page()`：完整单页闭环 Director → gate → Researcher → Designer → Reviewer；不合格走 `repair` 重评，返回 `Delivery(page, verdict, iterations)`。
+- `Pipeline.build_pptx()`：在 `build_page` 之上接 Engine——`bridge.render_with_report` 包 `Deck` 渲染、重开产物跑静态门，返回 `PptxDelivery(pptx, delivery, gate_report)`；静态门不通过抛 `EngineQualityError`。`build_page` / `run` 的签名、返回值与异常行为不变。
 
 LLM 后端通过 `LLMBackend` Protocol 解耦：`ReplayBackend` 用于离线测试与演示；`OpenAICompatibleBackend` 接任意 OpenAI 兼容端点，凭据走环境变量；`extract_json()` 兼容 markdown 代码块与前后缀文字。
 
@@ -180,6 +181,7 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 | Designer 模块函数 | `roles/designer.py`：`design` / `repair` / `pick_skeleton` | 无独立角色类（见 7.2 第 3 条） |
 | Reviewer 确定性评审 | `roles/reviewer.py`：`Reviewer.review_page` / `review` → `Verdict` / `Finding` | RV001–RV008；`backend=None` 零网络可复现 |
 | 单页闭环编排 | `roles/pipeline.py`：`Pipeline.build_page` → `Delivery` | `max_iter=3`，耗尽抛 `ReviewExhaustedError` 并带最后 Verdict |
+| Engine 接入 Pipeline 闭环 | `engine/bridge.py`：`render_verified` / `render_with_report` / `EngineQualityError`；`roles/pipeline.py`：`Pipeline.build_pptx` → `PptxDelivery(pptx, delivery, gate_report)` | `tests/test_bridge.py` 成功/失败两条离线用例；`scripts/verify.sh` e2e 段（`scripts/e2e_pipeline.py` 出单页 → soffice → pdftoppm → `check-visual`） |
 | 旧语义研究入口 | `Pipeline.run` | 返回 `ResearchBrief`，不进 Designer / Reviewer |
 | 骨架库五个版式 | `engine/skeletons.py`：`REGISTRY`、`render_skeleton`、`skeleton_keys` | `track / stat / topology / hero / split`，未知骨架抛 `ValueError` 不降级 |
 | 确定性渲染引擎 | `engine/renderer.py`：`Renderer.render` / `save` / `_dispatch`；`engine/ooxml_fix.py: fix_chart_axis_ids` | 原生可编辑 shape；保存前修轴 ID |
@@ -195,10 +197,10 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 
 | 未实现项 | 缺什么 | 影响 |
 | --- | --- | --- |
-| Engine 接入 Pipeline 闭环 | `build_page()` 之后没有调用 `Renderer` 出 PPTX；`pipeline.py` 不 import 引擎 | "五角色端到端出一份 PPTX"链路尚未成立；闭环交付物 `Delivery.page` 是未渲染的 `Page`，渲染只在 CLI `build` 路径发生 |
 | Deck 级多页编排 | 跨页大纲生成、页序与封面/结论衔接、Deck 级闭环均无；`Director.brief_page` 一次只定一页 | 闭环只能交付单页 `Delivery`；多页稿件目前仍需手写 YAML spec 后走 `build` |
-| Designer 独立角色类 | 当前是模块级函数集合，无统一角色对象接口与实例状态 | 不能把系统描述成"五个对等角色对象"；这是形态差异，现有函数职责已闭合 |
 | 真实 LLM 后端产出质量验证 | 缺 `OpenAICompatibleBackend` 接真实端点跑通 Director / Researcher / Reviewer 语义路径并验收的记录 | 真实模型下的结构化产物质量、JSON 输出稳定性、语义 finding 可用性均未验证；离线结论不可外推 |
+| 渲染回看 harness 未进库方法 | PPTX → PDF → 逐页 PNG 的转换链路在 `scripts/verify.sh` / CI 外部编排；库内只提供 `gates/visual.py` 的 PNG 判定函数 | 视觉门的产物侧喂数（soffice / pdftoppm）不是库调用；库方法不能独立完成"出片后回看" |
+| Designer 独立角色类 | 当前是模块级函数集合，无统一角色对象接口与实例状态 | 不能把系统描述成"五个对等角色对象"；这是形态差异，现有函数职责已闭合 |
 | 端到端自动修复的自然链路验证 | 纯离线链路不自然产生可恢复 critical（见 6.3）；缺接后端后真实打回—修复—收敛的用例 | 不能宣称"端到端自动修复已验证"；修复分支目前由注入点或直喂未加工 Page 触发 |
 | MCP 入口 | `src/` 内无 MCP server / tool 暴露实现，`connectors/`、`vision/` 包为空 | 现状只有库调用与 CLI 两个入口；旧 README 的"多入口"表述需更正 |
 | 既有 PPTX 反向解析与编辑式改造 | 缺读取现有 PPTX、诊断后回写编辑的路径；引擎只做 spec → PPTX 正向渲染 | "现有 PPT 优化"场景当前无代码支撑，属规划方向 |
@@ -219,4 +221,4 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 - **错误能否收敛。** 一键链路里，版面问题（溢出、重叠、对比度不足、留白过大）混在自然语言产出里，发现后只能整体重来，无法定位到可修复的规则项。本仓库把错误切成可执行判决：静态门与视觉门输出定位到页与字段的 issue，评审 finding 带稳定规则码与 `fix` 方向，`repair()` 按码做确定性修复，超限才升级人工。
 - **产物能否审计。** 一键产出的是不可回溯的成片；本仓库的产物是经过 `Deck.validate` / `Page.validate` / 规则判决的结构化 `Page` + 可编辑 OOXML，证据与口径进 `note` 留档，门禁结论可在 CI 干净环境复现。
 
-需要说明：上述两个属性目前在单页闭环内成立；Deck 级编排、真实后端下的收敛性尚未落地（见 7.2）。
+需要说明：单页五角色端到端出 PPTX 已成立（`build_pptx` 渲染并过静态门，见 7.1）；Deck 级编排、真实后端下的收敛性尚未落地（见 7.2）。
