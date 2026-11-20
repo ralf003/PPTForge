@@ -7,6 +7,9 @@
 - 最大空白块：画面中单一背景色连续矩形占画布面积过大。这是"上半屏空一片"的量化形式，
   也是配图被缩成小插图后最明显的症状。
 
+两条防假红规则：封面与分隔页的留白是设计意图（按页型分档）；深底满版页的同色大面积
+也是设计（背景本身是元素）。不区分这两件事，门禁会把设计判成缺陷，最后没人相信门禁。
+
 算法全程确定性（固定网格 + 直方图最大矩形），同一张图在任何机器上结果一致。
 """
 
@@ -31,6 +34,10 @@ MIN_INK_RATIO = 0.15
 
 # 单一空白块占画布面积上限（真实五页实测 6.2%–20.7%，空页 100%，留出余量后定 28%）
 MAX_EMPTY_BLOCK = 0.28
+
+# 深色满版判定：背景本身是设计元素（深底封面、分隔页），同色大面积不算缺陷
+DARK_LUMA_MAX = 90.0
+DARK_SHARE_MIN = 0.45
 
 # 分页型阈值（min_ink, max_empty）。封面与分隔页的留白是设计意图，内容页的留白是缺陷，
 # 用同一套阈值会把分隔页判成红的，制造假红并让人不再相信门禁。
@@ -104,6 +111,10 @@ def _max_empty_rect(rows: list[list[bool]]) -> tuple[float, tuple[int, int, int,
     return (best_area / total if total else 0.0), best_box
 
 
+def _luminance(rgb: tuple[int, int, int]) -> float:
+    return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+
+
 def limits_for(role: str | None) -> tuple[float, float]:
     """按页型取（墨迹下限, 空白上限）；未知页型按内容页处理，宁可严不宁可松。"""
     return ROLE_LIMITS.get(role or "content", (MIN_INK_RATIO, MAX_EMPTY_BLOCK))
@@ -121,7 +132,16 @@ def analyze(
     path = Path(png)
     img = Image.open(path).convert("RGB").resize((GRID_W, GRID_H), Image.Resampling.BOX)
     pixels = list(img.getdata())
-    bg = Counter(pixels).most_common(1)[0][0]
+    counts = Counter(pixels)
+    bg, bg_count = counts.most_common(1)[0]
+    # 深色满版页：同色大面积是设计（封面/分隔），只判"是否有字"，不判留白
+    dark_full_bleed = (
+        _luminance(bg) < DARK_LUMA_MAX and bg_count / float(GRID_W * GRID_H) > DARK_SHARE_MIN
+    )
+    if dark_full_bleed:
+        # 深底页的"墨迹"是白字，天然稀少；放宽到 1% 只为区分"有字"与"纯底色空页"
+        max_empty = 1.01
+        min_ink = min(min_ink, 0.01)
 
     rows: list[list[bool]] = []
     ink = 0
