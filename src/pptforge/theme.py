@@ -29,6 +29,10 @@ class Palette:
     mute: str = "4B5563"
     red: str = "DC2626"
     white: str = "FFFFFF"
+    # 强调与分层底色（骨架用）
+    amber: str = "F59E0B"
+    tint: str = "E8EEF9"
+    tint_alt: str = "D6E4F7"
 
 
 @dataclass(frozen=True)
