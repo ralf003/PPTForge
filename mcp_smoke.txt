@@ -1,1 +1,1 @@
-hello mcp smoke
+v3 array probe
