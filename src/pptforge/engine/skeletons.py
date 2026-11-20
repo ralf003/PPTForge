@@ -17,7 +17,7 @@ from pptx.util import Inches
 from pptforge.models import Page
 from pptforge.theme import Theme
 
-if TYPE_CHECKING:  # 仅类型引用，避免循环导入
+if TYPE_CHECKING:  # 仅类型引用
     from pptforge.engine.renderer import Renderer
 
 CENTER = PP_ALIGN.CENTER
@@ -189,7 +189,7 @@ def _value_size(text: str) -> int:
 
 
 def _stat(r: Renderer, page: Page) -> None:
-    """横向并列若干指标：大数字主导，短线分隔，整块在内容区居中，底部可挂结论带。"""
+    """横向并列若干指标：大数字主导，短线分隔，整块在内容区垂直居中，底部可挂结论带。"""
     theme = r.theme
     p, s = theme.palette, theme.scale
     slide = r._add_slide(p.bg)
@@ -247,7 +247,10 @@ def _topology(r: Renderer, page: Page) -> None:
         return
 
     gap = 0.30 if n >= 4 else 0.40
-    box_h = min(1.10, (CONTENT_BOTTOM - y0 - gap * (n - 1)) / n)
+    # 有结论带时只在其上方排布，与 track/stat 共用同一垂直边界；
+    # 层条撑满可用高度（设 1.60 上限保版式），修掉 n<4 时底部整片留白。
+    limit = CLAIM_BAND_TOP - 0.15 if page.claim else CONTENT_BOTTOM
+    box_h = min(1.60, (limit - y0 - gap * (n - 1)) / n)
     x, w = 1.00, 11.33
     label_w = 1.72
 
@@ -274,6 +277,8 @@ def _topology(r: Renderer, page: Page) -> None:
                 slide, x + w / 2 - 0.14, y + box_h + 0.04, 0.28, gap - 0.08,
                 p.blue, shape=MSO_SHAPE.DOWN_ARROW,
             )
+    if page.claim:
+        _claim_band(r, slide, page, theme)
     _notes(slide, page)
 
 
@@ -293,7 +298,7 @@ def _fill_picture(slide, path: str, x: float, y: float, w: float, h: float):
         pic.crop_left = cut
         pic.crop_right = cut
     elif img_r < box_r:  # 图更高 → 上下各裁一半
-        cut = (1 - img_r / box_r) / 2
+        cut = (1 - box_r / img_r) / 2
         pic.crop_top = cut
         pic.crop_bottom = cut
     return pic
@@ -359,7 +364,7 @@ def _split(r: Renderer, page: Page) -> None:
     row = (bottom - top) / max(1, len(items))
     for item in items:
         r._add_text(
-            slide, 0.88, top, SPLIT_COL_W - 1.2, 0.46,
+            slide, 0.88, 0.50, SPLIT_COL_W - 1.2, 0.46,
             [(item.name, s.item_name - 2, p.white, True)],
         )
         if item.desc:
