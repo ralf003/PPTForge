@@ -14,7 +14,7 @@ import re
 
 from pptforge.models import Item, Page
 from pptforge.roles.reviewer import MATURITY_WORDS, Verdict
-from pptforge.roles.schemas import ClaimCard, ResearchBrief
+from pptforge.roles.schemas import ClaimCard, DeckPagePlan, ResearchBrief
 
 # 只认带量纲的数：arXiv 编号、年份、步数都不该被当成指标
 _METRIC = re.compile(r"\d+(?:\.\d+)?(?:%|万|亿|倍)")
@@ -67,7 +67,12 @@ def _build_note(cards: list[ClaimCard]) -> str:
 
 
 def design(brief: ResearchBrief, skeleton: str | None = None) -> Page:
-    """主张卡 → 一页可渲染的 Page。最后一张卡升格为结论带（它是"往哪走"）。"""
+    """主张卡 → 一页可渲染的 content Page（向后兼容入口，委托 content 分支）。"""
+    return _design_content(brief, skeleton)
+
+
+def _design_content(brief: ResearchBrief, skeleton: str | None = None) -> Page:
+    """主张卡 → 一页可渲染的 content Page。最后一张卡升格为结论带（它是"往哪走"）。"""
     problems = brief.validate()
     if problems:
         raise ValueError("研究产物校验失败：" + "；".join(problems))
@@ -110,6 +115,85 @@ def design(brief: ResearchBrief, skeleton: str | None = None) -> Page:
         items=items,
         claim=claim,
         note=_build_note(cards),
+    )
+
+
+def _frozen_note(plan: DeckPagePlan, deck_title: str, extra: str | None = None) -> str:
+    """非 content 页的留档备注：冻结口径与图面原则，满足 RV001。"""
+    lines = [
+        f"{plan.page_role} 页（Deck《{deck_title}》冻结口径）",
+        f"主题：{plan.topic}",
+        f"主张：{plan.claim}",
+    ]
+    if plan.principles:
+        lines.append("图面原则：" + "；".join(plan.principles))
+    if extra:
+        lines.append(extra)
+    return "\n".join(lines)
+
+
+def _design_cover(plan: DeckPagePlan, deck_title: str) -> Page:
+    """封面页：整份 Deck 标题主导，副标题取冻结的第一条图面原则。"""
+    subtitle = plan.principles[0] if plan.principles else None
+    return Page(
+        role="cover",
+        title=deck_title,
+        subtitle=subtitle,
+        items=[],
+        note=_frozen_note(plan, deck_title),
+    )
+
+
+def _design_section(plan: DeckPagePlan, deck_title: str) -> Page:
+    """章节分隔页：章节判断句主导，不挂骨架、不堆条目。"""
+    subtitle = plan.principles[0] if plan.principles else None
+    return Page(
+        role="section",
+        title=plan.claim,
+        subtitle=subtitle,
+        items=[],
+        note=_frozen_note(plan, deck_title),
+    )
+
+
+def design_page(
+    plan: DeckPagePlan,
+    research: ResearchBrief | None,
+    *,
+    deck_title: str,
+) -> Page:
+    """按冻结规划的页型出页：cover/section 不需研究，content 必须有研究产物。"""
+    if plan.page_role == "cover":
+        return _design_cover(plan, deck_title)
+    if plan.page_role == "section":
+        return _design_section(plan, deck_title)
+    if plan.page_role == "content":
+        if research is None:
+            raise ValueError("content 页必须先经 Researcher 产出研究产物")
+        return _design_content(research, plan.skeleton)
+    raise ValueError(f"summary 页需基于全稿结论汇总，请走 design_summary：{plan.claim}")
+
+
+def design_summary(
+    plan: DeckPagePlan,
+    content_pages: list[Page],
+    *,
+    deck_title: str,
+) -> Page:
+    """结论页：把各 content 页的判断句收束成结论条目，证据口径进备注。"""
+    items = [
+        Item(name=(page.claim or page.title).split("\n")[0].strip())
+        for page in content_pages
+    ]
+    if not items:
+        # 没有 content 页时至少保留结论页自身主张，禁止空 summary
+        items = [Item(name=plan.claim)]
+    extra = "结论收束自各 content 页判断句，细节见对应页备注"
+    return Page(
+        role="summary",
+        title=plan.claim,
+        items=items,
+        note=_frozen_note(plan, deck_title, extra),
     )
 
 
