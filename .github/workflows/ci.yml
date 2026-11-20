@@ -54,6 +54,9 @@ jobs:
     needs: quality
     runs-on: ubuntu-latest
     continue-on-error: true
+    # 视觉门建单/关单需要 issue 写权限；job 级显式声明，不依赖默认权限集
+    permissions:
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,11 +78,63 @@ jobs:
           soffice --headless --convert-to pdf --outdir /tmp /tmp/sample.pptx
           pdftoppm -png -r 90 /tmp/sample.pdf /tmp/slide
       - name: 视觉门：check-visual 逐页回看
+        id: visual
         run: |
           set -o pipefail
           ROLES="$(python -c 'from pptforge.models import Deck; print(",".join(p.role for p in Deck.load("examples/sample_spec.yaml").pages))')"
           echo "页序 roles: ${ROLES}"
           pptforge check-visual /tmp/slide-*.png --roles "${ROLES}" 2>&1 | tee /tmp/visual-report.txt
+      # 真实视觉缺陷（留白/溢出/重叠）：视觉门本身判 failure 时建单。
+      # 安装步骤失败导致视觉门 skipped 属于环境抖动，outcome 不是 failure，不会在此建单。
+      - name: 视觉门失败建单（真实视觉缺陷）
+        if: steps.visual.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          SHA="${{ github.sha }}"
+          SHORT="$(printf '%s' "$SHA" | cut -c1-7)"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          LABEL="visual-failure"
+          gh label create "$LABEL" --description "视觉门真实失败（留白/溢出/重叠）" || true
+          echo "::error::视觉门 check-visual 判定失败，属于真实视觉缺陷，需按根因修复：${RUN_URL}"
+          BODY_FILE="$(mktemp)"
+          cat > "$BODY_FILE" <<EOF
+          ## 视觉门失败需要处理
+          - 提交：\`${SHORT}\`（${SHA}）
+          - 运行：${RUN_URL}
+          - 判定：check-visual 真实视觉缺陷（空页/留白/溢出/重叠），非 apt/soffice 环境抖动
+
+          请下载 rendered-preview artifact 定位失败页，按根因修复；干净环境跑 \`bash scripts/verify.sh\` 全绿后，本工单会在视觉门恢复 success 时自动关闭。
+          EOF
+          existing="$(gh issue list --state open --label "$LABEL" --search "$SHORT" --json number --jq '.[0].number' 2>/dev/null || true)"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再次失败：${RUN_URL}"
+            echo "已更新既有视觉工单 #${existing}"
+          else
+            gh issue create --title "视觉门失败工单：${SHORT}" --label "$LABEL" --body-file "$BODY_FILE" \
+              || gh issue create --title "视觉门失败工单：${SHORT}" --body-file "$BODY_FILE"
+          fi
+      # 视觉门恢复 success：评论并关闭所有 open 的 visual-failure 工单，建单/关单在同一 job 内闭环
+      - name: 视觉门恢复后关单
+        if: steps.visual.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          nums="$(gh issue list --state open --label visual-failure --json number --jq '.[].number' 2>/dev/null || true)"
+          if [ -z "$nums" ]; then
+            echo "无待关闭视觉工单"
+            exit 0
+          fi
+          for n in $nums; do
+            gh issue comment "$n" --body "视觉门已恢复并验证通过：${RUN_URL}"
+            gh issue close "$n" --reason completed
+            echo "已评论并关闭视觉工单 #${n}"
+          done
       - name: 上传渲染产物
         if: always()
         uses: actions/upload-artifact@v4
