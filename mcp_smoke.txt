@@ -1,1 +1,3 @@
-v3 array probe
+line one
+line two
+line three
