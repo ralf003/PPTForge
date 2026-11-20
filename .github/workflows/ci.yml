@@ -98,16 +98,27 @@ jobs:
       - name: 创建或更新 CI 失败工单
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 显式指定仓库：本 job 不 checkout，工作目录不是 git 仓库，
+          # 不带 --repo / GH_REPO 时 gh 无法推断目标仓库（历史失败根因）
+          GH_REPO: ${{ github.repository }}
         run: |
-          set -e
+          set -euo pipefail
           SHA="${{ github.sha }}"
           SHORT="$(printf '%s' "$SHA" | cut -c1-7)"
           BR="${{ github.ref_name }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ACTOR="${{ github.actor }}"
           LABEL="ci-failure"
-          gh label create "$LABEL" --description "CI 失败自动工单" || true
-          BODY=$(cat <<EOF
+
+          echo "目标仓库：${GH_REPO}"
+          gh auth status || true
+
+          if ! gh label create "$LABEL" --description "CI 失败自动工单" 2>/tmp/label.err; then
+            echo "标签已存在或创建返回非零：$(cat /tmp/label.err)"
+          fi
+
+          BODY_FILE="$(mktemp)"
+          cat > "$BODY_FILE" <<EOF
           ## CI 失败需要处理
           - 提交：\`${SHORT}\`（${SHA}）
           - 分支：${BR}
@@ -117,10 +128,16 @@ jobs:
 
           请按根因修复，禁止 workaround、禁止只删断言；修复后干净环境跑 \`bash scripts/verify.sh\` 全绿，再关闭本工单。
           EOF
-          )
-          existing="$(gh issue list --state open --label "$LABEL" --search "$SHORT" --json number --jq '.[0].number' || true)"
+
+          existing="$(gh issue list --state open --label "$LABEL" --search "$SHORT" --json number --jq '.[0].number' 2>/dev/null || true)"
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "再次失败：${RUN_URL}"
+            echo "已更新既有工单 #${existing}"
           else
-            gh issue create --title "CI 失败工单：${SHORT}（${BR}）" --label "$LABEL" --body "$BODY"
+            if gh issue create --title "CI 失败工单：${SHORT}（${BR}）" --label "$LABEL" --body-file "$BODY_FILE"; then
+              echo "已创建带标签失败工单"
+            else
+              echo "::error::带标签创建失败，退化为无标签工单"
+              gh issue create --title "CI 失败工单：${SHORT}（${BR}）" --body-file "$BODY_FILE"
+            fi
           fi
