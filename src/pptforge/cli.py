@@ -6,6 +6,7 @@ import argparse
 import importlib.metadata
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from pptforge import __version__
@@ -100,6 +101,37 @@ def cmd_validate(spec: Path) -> int:
     return 0
 
 
+def cmd_check_visual(
+    pngs: Sequence[Path],
+    min_ink: float | None,
+    max_empty: float | None,
+    roles: Sequence[str] | None = None,
+) -> int:
+    """对渲染后的逐页 PNG 跑视觉门：空页与大片留白。"""
+    from pptforge.gates.visual import run_visual_gates
+
+    missing = [p for p in pngs if not p.exists()]
+    if missing:
+        print("找不到渲染图：")
+        for p in missing:
+            print(" - " + str(p))
+        return 2
+
+    # 不显式给阈值时按页型分档：封面与分隔页的留白是设计，内容页的留白是缺陷
+    report = run_visual_gates(pngs, roles=roles, min_ink=min_ink, max_empty=max_empty)
+    for page in report.pages:
+        print(
+            f"P{page.page} 墨迹 {page.ink_ratio:.1%} / 最大空白块 {page.max_empty_ratio:.1%}"
+        )
+    if report.ok:
+        print(f"视觉门通过：{len(report.pages)} 页")
+        return 0
+    print("视觉门未通过：")
+    for issue in report.issues:
+        print(" - " + issue)
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pptforge", description="声明式工程化 PPT 工具链")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -112,6 +144,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_val = sub.add_parser("validate", help="仅校验 spec")
     p_val.add_argument("spec", type=Path, help="YAML spec 文件")
+
+    p_vis = sub.add_parser(
+        "check-visual", help="对渲染后的逐页 PNG 跑视觉门（空页与大片留白）"
+    )
+    p_vis.add_argument("pngs", type=Path, nargs="+", help="逐页渲染图（按页序）")
+    p_vis.add_argument("--min-ink", type=float, default=None, help="非背景像素占比下限")
+    p_vis.add_argument("--max-empty", type=float, default=None, help="单一空白块面积上限")
+    p_vis.add_argument(
+        "--roles",
+        default=None,
+        help="按页序给页型，逗号分隔（cover,section,content,summary），用于分档阈值",
+    )
     return parser
 
 
@@ -124,6 +168,9 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_build(args.spec, args.output)
     if args.command == "validate":
         return cmd_validate(args.spec)
+    if args.command == "check-visual":
+        roles = args.roles.split(",") if args.roles else None
+        return cmd_check_visual(args.pngs, args.min_ink, args.max_empty, roles)
     return 1
 
 
