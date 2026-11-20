@@ -17,7 +17,7 @@ from pptx.util import Inches
 from pptforge.models import Page
 from pptforge.theme import Theme
 
-if TYPE_CHECKING:  # 仅类型引用
+if TYPE_CHECKING:  # 仅类型引用，避免循环导入
     from pptforge.engine.renderer import Renderer
 
 CENTER = PP_ALIGN.CENTER
@@ -189,7 +189,7 @@ def _value_size(text: str) -> int:
 
 
 def _stat(r: Renderer, page: Page) -> None:
-    """横向并列若干指标：大数字主导，短线分隔，整块在内容区垂直居中，底部可挂结论带。"""
+    """横向并列若干指标：大数字主导，短线分隔，整块在内容区居中，底部可挂结论带。"""
     theme = r.theme
     p, s = theme.palette, theme.scale
     slide = r._add_slide(p.bg)
@@ -298,7 +298,7 @@ def _fill_picture(slide, path: str, x: float, y: float, w: float, h: float):
         pic.crop_left = cut
         pic.crop_right = cut
     elif img_r < box_r:  # 图更高 → 上下各裁一半
-        cut = (1 - box_r / img_r) / 2
+        cut = (1 - img_r / box_r) / 2
         pic.crop_top = cut
         pic.crop_bottom = cut
     return pic
@@ -364,7 +364,7 @@ def _split(r: Renderer, page: Page) -> None:
     row = (bottom - top) / max(1, len(items))
     for item in items:
         r._add_text(
-            slide, 0.88, 0.50, SPLIT_COL_W - 1.2, 0.46,
+            slide, 0.88, top, SPLIT_COL_W - 1.2, 0.46,
             [(item.name, s.item_name - 2, p.white, True)],
         )
         if item.desc:
