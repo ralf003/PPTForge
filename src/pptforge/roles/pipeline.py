@@ -12,7 +12,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
+from pptforge.engine import bridge
+from pptforge.gates.checks import GateReport
 from pptforge.models import Page
 from pptforge.roles.designer import design, repair
 from pptforge.roles.director import Director
@@ -36,6 +39,15 @@ class Delivery:
     page: Page
     verdict: Verdict
     iterations: int
+
+
+@dataclass
+class PptxDelivery:
+    """闭环出片交付物：PPTX 路径、角色层 Delivery、静态门报告。"""
+
+    pptx: Path
+    delivery: Delivery
+    gate_report: GateReport
 
 
 class ReviewExhaustedError(RuntimeError):
@@ -103,3 +115,27 @@ class Pipeline:
         if not verdict.ok:
             raise ReviewExhaustedError(verdict, iterations)
         return Delivery(page=page, verdict=verdict, iterations=iterations)
+
+    def build_pptx(
+        self,
+        topic: str,
+        output: str | Path,
+        audience: str = "通用技术听众",
+        page_role: str = "content",
+        gate: Gate = auto_gate,
+        skeleton: str | None = None,
+        *,
+        deck_title: str | None = None,
+    ) -> PptxDelivery:
+        """单页闭环出片：`build_page` 之后接 Engine 渲染并过静态门。
+
+        `build_page` 逻辑一字不改；静态门不通过抛 `EngineQualityError`，
+        返回的 `PptxDelivery` 携带产物路径、角色层 Delivery 与静态门报告。
+        """
+        delivery = self.build_page(topic, audience, page_role, gate, skeleton)
+        pptx, report = bridge.render_with_report(
+            delivery.page, output, deck_title=deck_title
+        )
+        if not report.ok:
+            raise bridge.EngineQualityError(report.issues)
+        return PptxDelivery(pptx=pptx, delivery=delivery, gate_report=report)

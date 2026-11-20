@@ -48,6 +48,10 @@ PPTX="/tmp/verify.pptx"
 PDF="/tmp/verify.pdf"
 SLIDE_PREFIX="/tmp/verify-slide"
 SLIDE_GLOB="${SLIDE_PREFIX}-*.png"
+E2E_PPTX="/tmp/verify_e2e.pptx"
+E2E_PDF="/tmp/verify_e2e.pdf"
+E2E_SLIDE_PREFIX="/tmp/verify_e2e-slide"
+E2E_SLIDE_GLOB="${E2E_SLIDE_PREFIX}-*.png"
 
 STEP="（未开始）"
 trap 'code=$?; echo ""; echo "✗ 验收失败：步骤 [${STEP}] 退出码 ${code}"; exit 1' ERR
@@ -83,6 +87,13 @@ else
     'from pptforge.models import Deck; print(",".join(p.role for p in Deck.load("examples/sample_spec.yaml").pages))')"
   echo "页序 roles：${ROLES}"
   run_step "check-visual 视觉门" "${PPTFORGE}" check-visual ${SLIDE_GLOB} --roles "${ROLES}"
+
+  # ---- Engine 接入 Pipeline 闭环：ReplayBackend 出单页 → 渲染 → 视觉门 ----
+  run_step "e2e 闭环出片" "${PYTHON}" scripts/e2e_pipeline.py "${E2E_PPTX}"
+  rm -f "${E2E_PDF}" ${E2E_SLIDE_GLOB}
+  run_step "e2e soffice 转 PDF" soffice --headless --convert-to pdf --outdir /tmp "${E2E_PPTX}"
+  run_step "e2e pdftoppm 出图" pdftoppm -png -r 110 "${E2E_PDF}" "${E2E_SLIDE_PREFIX}"
+  run_step "e2e check-visual 视觉门" "${PPTFORGE}" check-visual ${E2E_SLIDE_GLOB} --roles content
 fi
 
 END_TS="$(date +%s)"
