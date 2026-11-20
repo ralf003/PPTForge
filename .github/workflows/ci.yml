@@ -69,10 +69,18 @@ jobs:
           pptforge build examples/sample_spec.yaml -o /tmp/sample.pptx
           soffice --headless --convert-to pdf --outdir /tmp /tmp/sample.pptx
           pdftoppm -png -r 90 /tmp/sample.pdf /tmp/slide
+      - name: 视觉门：check-visual 逐页回看
+        run: |
+          set -o pipefail
+          ROLES="$(python -c 'from pptforge.models import Deck; print(",".join(p.role for p in Deck.load("examples/sample_spec.yaml").pages))')"
+          echo "页序 roles: ${ROLES}"
+          pptforge check-visual /tmp/slide-*.png --roles "${ROLES}" 2>&1 | tee /tmp/visual-report.txt
       - name: 上传渲染产物
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rendered-preview
           path: |
             /tmp/sample.pptx
             /tmp/slide-*.png
+            /tmp/visual-report.txt
