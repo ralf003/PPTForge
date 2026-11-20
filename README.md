@@ -69,7 +69,7 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 ```yaml
 - role: content
   skeleton: track
-  title: 规模化的瓶颈是长程轨迹与治理
+  title: 规模化的瓶颈是长程任务失败机理
   items:
     - name: 误差级联
       desc: 单步高成功率在长链上坍缩
@@ -91,7 +91,7 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 | 墨迹覆盖率 | ≥ 15% | 低于即判空页，抓配图没加载 |
 | 最大空白块 | ≤ 28% | 抓“上半屏空一片” |
 
-封面、分隔页单独放宽——那里的留白是设计意图；深底满版页不参与留白判定——背景本身就是元素。
+封面、分隔页单独放宽——那里的留白是设计意图；深底满版页不参与留白判定——背景本身是元素。
 
 ## 设计哲学
 
@@ -104,8 +104,8 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 
 当前是 **P0**，接口在 0.x 不承诺稳定。
 
-- 已实现：五骨架、静态质量门、视觉门、CLI（build / validate / check-visual / doctor）、单页五角色端到端出 PPTX，静态门兜底。
-- 未实现：Deck 级多页编排、真实 LLM 后端产出验证、现有 PPT 的反向解析与优化、原生图表与表格渲染、MCP 入口。
+- 已实现：五骨架、静态质量门、视觉门、CLI（build / validate / check-visual / doctor）、单页与多页五角色端到端出 PPTX，静态门兜底。
+- 未实现：Deck 级大纲冻结与封面/结论页自动生产、真实 LLM 后端产出验证、现有 PPT 的反向解析与优化、原生图表与表格渲染、MCP 入口。
 
 未实现的能力不会写进“已实现”清单。
 

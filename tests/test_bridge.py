@@ -18,7 +18,13 @@ from pptx import Presentation
 from pptforge.engine import bridge
 from pptforge.gates.checks import GateReport
 from pptforge.roles.llm import ReplayBackend
-from pptforge.roles.pipeline import Delivery, Pipeline, PptxDelivery
+from pptforge.roles.pipeline import (
+    DeckDelivery,
+    DeckPageSpec,
+    Delivery,
+    Pipeline,
+    PptxDelivery,
+)
 
 
 def _backend() -> ReplayBackend:
@@ -94,3 +100,57 @@ def test_render_verified_raises_on_gate_failure(
         bridge.render_verified(delivery.page, tmp_path / "bad.pptx")
 
     assert exc.value.issues == ["P1 故意违规"]
+
+
+def test_build_deck_produces_gated_multi_slide(tmp_path: Path) -> None:
+    pipe = Pipeline(_backend())
+    specs = [
+        DeckPageSpec(topic="失败机理", skeleton="track"),
+        DeckPageSpec(topic="失败机理", skeleton="topology"),
+        DeckPageSpec(topic="失败机理", skeleton="track"),
+    ]
+
+    out = tmp_path / "deck.pptx"
+    result = pipe.build_deck(specs, out, deck_title="多页验收")
+
+    assert isinstance(result, DeckDelivery)
+    assert result.pptx == out
+    assert len(result.deliveries) == 3
+    assert result.gate_report.ok
+    assert len(Presentation(str(out)).slides) == 3
+
+
+def test_build_deck_rejects_empty_specs(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="至少需要一个页面规格"):
+        Pipeline(_backend()).build_deck([], tmp_path / "empty.pptx")
+
+
+def test_render_deck_verified_direct(tmp_path: Path) -> None:
+    pipe = Pipeline(_backend())
+    delivery = pipe.build_page("失败机理")
+    from pptforge.models import Deck
+
+    deck = Deck(title="直调多页", pages=[delivery.page, delivery.page])
+    out = tmp_path / "deck.pptx"
+
+    path = bridge.render_deck_verified(deck, out)
+
+    assert path == out
+    assert len(Presentation(str(out)).slides) == 2
+
+
+def test_render_deck_verified_raises_on_gate_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    delivery = Pipeline(_backend()).build_page("失败机理")
+    from pptforge.models import Deck
+
+    deck = Deck(title="坏多页", pages=[delivery.page])
+    monkeypatch.setattr(
+        bridge, "run_gates", lambda _prs: GateReport(issues=["P2 故意违规"])
+    )
+
+    with pytest.raises(bridge.EngineQualityError) as exc:
+        bridge.render_deck_verified(deck, tmp_path / "bad.pptx")
+
+    assert exc.value.issues == ["P2 故意违规"]
