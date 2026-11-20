@@ -13,14 +13,15 @@
 ### 1.1 自动评审分工（含 kilo-code-robot）
 
 - **kilo-code-robot（Kilo Code GitHub App）= 独立第三方代码评审**：在 PR 打开/更新/就绪时自动触发，输出 summary 与 inline 评论、severity 与合并建议，覆盖通用缺陷、安全、性能与风格。它独立于实现 agent，承担"评审独立性"，不重复自研。
-- **PPT 专项质量门（CI required check）= 它覆盖不到的部分**：schema、负轴 ID、微软雅黑、投影级字号、对比度、逐页渲染回看。
+- **PPT 专项质量门（CI required check）= 它覆盖不到的部分**：schema、负轴 ID、微软雅黑、投影级字号、对比度、逐页渲染回看、空页与留白。
 - **合并条件**：kilo-code-robot 无 critical 阻断 + 专项质量门全绿，才允许自动合并。
 - **关键配置（否则评审静默失效）**：Kilo 默认忽略 bot 生成的 PR，而本项目实现工作主要由 agent 完成。须在 Kilo 配置中把**自己的实现 agent 账户加入评审白名单**，或使用受控且被认可的提交身份；外部/陌生 bot 仍不评审、不自动合并。
 - 评审偏好通过仓库根 `REVIEW.md` 对齐；Kilo 评论为建议性质，最终硬门仍以 required check 为准。
 
 ## 2. 分支与提交
 
-- 禁止直接 push/merge `main`，一切改动走 PR。
+- 默认走 PR；**当前阶段（P0、单 agent 串行）允许直推 `main`**，前提是逐次在本地跑完整套 CI 同款命令，并在推送后 clone 远端复验。多 agent 并行、或改动公共契约（`models.py` / `theme.py` / 骨架注册表）时，必须恢复 PR 流程。
+- PR 提交同样适用第 3 节的验证要求，PR body 只写结论与证据，不贴日志原文。
 - 分支命名：`agent/<task-slug>-<timestamp>`。
 - 提交遵循 Conventional Commits：`feat/fix/docs/refactor/test/chore/perf/ci`。
 - PR 小而聚焦；大改动用 stacked PR。
@@ -48,18 +49,26 @@ pptforge build examples/sample_spec.yaml -o /tmp/check.pptx
   /tmp/civenv/bin/ruff check src tests && /tmp/civenv/bin/mypy src && /tmp/civenv/bin/pytest
   ```
 
-## 3.1 骨架库铁律（本轮实证）
+## 3.1 骨架库铁律（实证）
 
 - **agent 只产出语义，不产出坐标**：新增页面一律加 `Page.skeleton`，位置由 `engine/skeletons.py` 推导。手写 `Inches(...)` 的脚本视为技术债，不再新增。
 - **骨架必须确定性**：同一份内容在任何画布尺寸下都成立；骨架里算出的坐标不得依赖外部随机量或内容长度抖动（长度只允许影响字号分档）。
 - **未知骨架直接抛 `ValueError`**，禁止静默降级到基础页型——静默降级会让"看起来渲染成功"掩盖契约破坏。
-- 新增骨架必须同时做三件事：注册进 `REGISTRY`、加进 `models.SKELETONS`（否则校验先拦下）、补 `tests/test_skeletons.py` 的"生成一页并通过门禁"用例。
+- 新增骨架必须同时做三件事：注册进 `REGISTRY`、加进 `models.SKELETONS`（否则校验先拦下）、补 `tests/test_skeletons.py` 的"生成一页并通过门禁"用例，三处同一个 commit。
 - **教训（阴影，实证）**：`add_shape` 会写 `<p:style>` 引用主题 `effectRef`，只设 `shadow.inherit=False` 或清 `spPr/effectLst` 都去不掉阴影，LibreOffice 与 PowerPoint 都会照旧渲染。必须删除整个 `<p:style>` 元素。这是"肉眼才看得见"的缺陷，门禁不覆盖，只能靠渲染回看。
 - **教训（数值抽取，实证）**：从证据文本抽"关键量化"时，正则必须带量纲约束（`%|万|亿|倍`）。只写 `\d+` 会把 arXiv 编号 `2601.22984`、年份 `2026`、步数识别成指标，图面出现 `2601.22984 → 36` 这类垃圾。规则抽取只是 LLM 的替身，接后端后应改为语义判断。
 - **教训（空卡片，实证）**：为消除留白而给指标加"撑满内容区的底板"，会把页面变成三块大空卡片，正是被批评的格阵式。正确做法是内容块按实际高度垂直居中，再用结论带填底部。
-- **教训（契约与实现必须同一次提交，run #26 实证）**：`models.SKELETONS` 白名单与引擎 `REGISTRY` 契约分离推送时，中间提交必然红——`test_registry_matches_model_contract` 会断言两者相等。这是刻意设计的契约螺丝，但在 CI 页面上只表现为三矩阵 `exit code 1`、无注解，极易被误判成环境抖动。新增骨架时，注册表、白名单、测试三处必须在同一个 commit 内落地。
-- **教训（验证方法，实证）**：在 clone B 目录里跑 pytest，若解释器来自 clone A 的 editable 安装（`pip install -e`），导入的是 A 的源码，跑出来的绿是假的。验证某个目录的代码，必须让该目录优先于 site-packages：`PYTHONPATH=$PWD/src python -m pytest`，或为该 clone 单独建 venv。跨目录的 editable 安装会静默污染结论。
+- **教训（验证方法，实证）**：在 clone B 目录里跑 pytest，若解释器来自 clone A 的 editable 安装（`pip install -e`），导入的是 A 的源码，跑出来的绿是假的。验证某个目录的代码，必须让该目录优先于 site-packages：`PYTHONPATH=$PWD/src python -m pytest`，或为该 clone 单独建 venv。
 - 每个骨架页面必须挂 `note`：证据、缺口、口径一律进备注，不占图面。
+
+## 3.2 视觉门铁律（实证）
+
+- 静态门（`gates/checks.py`）看结构，视觉门（`gates/visual.py`）看"是不是空"。两者都不能省：静态门全绿不等于视觉合格。
+- 阈值必须由真实渲染图标定，不得凭感觉调整。当前标定：内容页墨迹 ≥15%、最大空白块 ≤28%；封面 2%/72%、分隔页 2%/70%、结论页 2%/60%。
+- **两条防假红规则不得删除**：①按页型分档——封面与分隔页的留白是设计意图；②深底满版页不参与留白判定——背景本身就是元素。删掉它们，门禁会把设计判成缺陷，最后没人再相信门禁。
+- 视觉门必须吃渲染后的 PNG，不能从 PPTX 结构估算：结构上没有越界、没有重叠的页面，视觉上仍可能空掉一半。
+- **教训（基础版式，实证）**：无骨架的 `content` 页是"三行文字垂直均分"，实测墨迹 2.4%–7.3%、最大空白块 46%–62%，右半屏与行间全空，即最初被批评的旧版观感。`content` 页未选骨架视为未完成交付。
+- 交付前的完整链路：`build` → `run_gates` → `soffice` 转 PDF → `pdftoppm` 出图 → `check-visual` → 逐页多模态回看。任一步跳过都不算验证。
 
 ## 4. 安全红线
 
