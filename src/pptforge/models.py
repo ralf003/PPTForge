@@ -16,7 +16,7 @@ import yaml
 ROLES = ("cover", "section", "content", "summary")
 
 # 受支持的骨架（可复用确定性版式）；具体布局由 engine/skeletons 实现
-SKELETONS = ("track", "stat", "topology")
+SKELETONS = ("track", "stat", "topology", "hero", "split")
 
 
 @dataclass
@@ -40,6 +40,8 @@ class Page:
     skeleton: str | None = None
     # 结论句：track 等骨架用它渲染底部结论带
     claim: str | None = None
+    # 配图：hero/split 骨架用本地图片填充图区
+    image: str | None = None
 
     def validate(self) -> list[str]:
         problems: list[str] = []
@@ -96,6 +98,7 @@ class Deck:
                     note=raw.get("note"),
                     skeleton=raw.get("skeleton"),
                     claim=raw.get("claim"),
+                    image=raw.get("image"),
                 )
             )
         return cls(
