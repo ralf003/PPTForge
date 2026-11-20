@@ -1,6 +1,6 @@
 """Engine 与 Pipeline 之间的单一职责桥接。
 
-把角色闭环产出的单页 `Page` 包成 `Deck` 落盘，再重新打开产物跑静态门：
+把角色闭环产出的 `Page`/`Deck` 落盘，再重新打开产物跑静态门：
 - 静态门通过：返回产物 `Path`；
 - 静态门不通过：抛 `EngineQualityError`，issues 原样透出，禁止静默交付。
 
@@ -28,6 +28,29 @@ class EngineQualityError(RuntimeError):
         super().__init__("静态质量门未通过：" + "；".join(self.issues))
 
 
+def render_deck_with_report(
+    deck: Deck,
+    output: str | Path,
+    theme: Theme | None = None,
+) -> tuple[Path, GateReport]:
+    """渲染整份 Deck 并跑静态门，返回产物路径与门报告；门只跑一次供上层复用。"""
+    out = Renderer(theme).save(deck, output)
+    report = run_gates(Presentation(str(out)))
+    return out, report
+
+
+def render_deck_verified(
+    deck: Deck,
+    output: str | Path,
+    theme: Theme | None = None,
+) -> Path:
+    """渲染整份 Deck 并过静态门；不通过抛 `EngineQualityError`，通过返回产物路径。"""
+    out, report = render_deck_with_report(deck, output, theme)
+    if not report.ok:
+        raise EngineQualityError(report.issues)
+    return out
+
+
 def render_with_report(
     page: Page,
     output: str | Path,
@@ -36,9 +59,7 @@ def render_with_report(
 ) -> tuple[Path, GateReport]:
     """渲染单页并跑静态门，返回产物路径与门报告；门只跑一次供上层复用。"""
     deck = Deck(title=deck_title or page.title, pages=[page])
-    out = Renderer(theme).save(deck, output)
-    report = run_gates(Presentation(str(out)))
-    return out, report
+    return render_deck_with_report(deck, output, theme)
 
 
 def render_verified(

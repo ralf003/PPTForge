@@ -29,9 +29,10 @@ class Palette:
     mute: str = "4B5563"
     red: str = "DC2626"
     white: str = "FFFFFF"
-    # 强调与分层底色（骨架用）
+    # 强调与分层底色（骨架用）。tint 与 bg 的像素距离必须 > 视觉门 INK_DIFF(24)，
+    # 否则分层盒在降采样网格里被当成背景，留白门失效；DCE6F5 实测距离 29.3。
     amber: str = "F59E0B"
-    tint: str = "E8EEF9"
+    tint: str = "DCE6F5"
     tint_alt: str = "D6E4F7"
 
 
