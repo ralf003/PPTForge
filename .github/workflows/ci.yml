@@ -84,3 +84,43 @@ jobs:
             /tmp/sample.pptx
             /tmp/slide-*.png
             /tmp/visual-report.txt
+
+  # 失败工单：阻断 job 失败时，用运行时自带 GITHUB_TOKEN 自动建/更新 issue。
+  # 事件驱动、环外，不依赖任何外部 webhook 或密钥。
+  failure-ticket:
+    name: 失败工单
+    needs: [quality, render-preview]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 创建或更新 CI 失败工单
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          SHA="${{ github.sha }}"
+          SHORT="$(printf '%s' "$SHA" | cut -c1-7)"
+          BR="${{ github.ref_name }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ACTOR="${{ github.actor }}"
+          LABEL="ci-failure"
+          gh label create "$LABEL" --description "CI 失败自动工单" || true
+          BODY=$(cat <<EOF
+          ## CI 失败需要处理
+          - 提交：\`${SHORT}\`（${SHA}）
+          - 分支：${BR}
+          - 触发者：${ACTOR}
+          - 运行：${RUN_URL}
+          - 阻断 job：quality（ruff/mypy/pytest/静态门/泄漏扫描）
+
+          请按根因修复，禁止 workaround、禁止只删断言；修复后干净环境跑 \`bash scripts/verify.sh\` 全绿，再关闭本工单。
+          EOF
+          )
+          existing="$(gh issue list --state open --label "$LABEL" --search "$SHORT" --json number --jq '.[0].number' || true)"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再次失败：${RUN_URL}"
+          else
+            gh issue create --title "CI 失败工单：${SHORT}（${BR}）" --label "$LABEL" --body "$BODY"
+          fi
