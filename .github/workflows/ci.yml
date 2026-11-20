@@ -61,11 +61,16 @@ jobs:
           python-version: "3.12"
       - run: pip install -e '.[dev]'
       - name: 安装LibreOffice并渲染逐页回看
-        timeout-minutes: 6
+        # apt 安装 LibreOffice 耗时波动大：6 分钟预算实测会被打满（Run 83 起 6m12s 超时，
+        # 导致视觉门整步 skipped、门禁被静默降级）。预算放宽到 15 分钟，并给 apt 网络请求
+        # 加有界超时，让镜像卡死快速失败而不是吃满总预算。
+        timeout-minutes: 15
         run: |
-          sudo apt-get update -qq
+          sudo apt-get update -qq \
+            -o Acquire::Retries=3 -o Acquire::http::Timeout=30
           sudo apt-get install -y -qq --no-install-recommends \
-            -o Acquire::Retries=3 libreoffice-impress poppler-utils
+            -o Acquire::Retries=3 -o Acquire::http::Timeout=30 \
+            libreoffice-impress poppler-utils
           pptforge build examples/sample_spec.yaml -o /tmp/sample.pptx
           soffice --headless --convert-to pdf --outdir /tmp /tmp/sample.pptx
           pdftoppm -png -r 90 /tmp/sample.pdf /tmp/slide
