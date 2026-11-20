@@ -202,7 +202,7 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 | 未实现项 | 缺什么 | 影响 |
 | --- | --- | --- |
 | 单 body 项骨架自适应（已落地，留口径备查） | track / stat / topology 单条目切换居中放大版式：隐藏仅多元素才有意义的部件（track 轨迹方向标签、topology 层间箭头），元素在内容区水平 + 垂直居中；容量硬门 track/stat/split=4、topology=5，超容量与空条目抛 `ValueError`，不静默截断或退化为标题页。stat 无量化值时不渲染大号占位符，名称作为主元素落在一条全宽内容条内（与 topology 层条同一组件语言，条体承载名称、非装饰空底板）。变体稳健性实测（content 档，`-r 110`，覆盖有/无 desc、短/长 name、有/无 value，均带结论带）：最差 track max_empty 21.4%、stat 20.4%、topology 18.2%，ink 最低 26.6%，均过 15%/28% 阈值且留 ≥3pp 余量 | hero / split 配图供给链路仍缺（见下条与 D-01）；单 item 自适应只覆盖 track/stat/topology 三骨架。视觉门 ink 口径在离线合成样本下依赖结论带；无 claim 的 content 页 ink 偏薄为既有特性，自然流 ≥2 卡必挂结论带 |
-| Pillow `getdata()` 弃用 API（已迁移） | `gates/visual.py` 已由 `Image.getdata()` 迁移为 `get_flattened_data()`，返回形态一致（RGB 下 `list[tuple[int,int,int]]`），消除 Pillow 14 移除前的 DeprecationWarning | 无遗留动作；后续升级 Pillow 时回归视觉门确定性用例 |
+| Pillow `getdata()` 弃用 API（已迁移） | `gates/visual.py` 已由 `Image.getdata()` 迁移为 `get_flattened_data()`（该方法自 Pillow 12.1.0 引入），返回形态一致（RGB 下 `list[tuple[int,int,int]]`），消除 Pillow 14 移除前的 DeprecationWarning；`pyproject.toml` 依赖下限同步由 `Pillow>=10.0` 上调为 `Pillow>=12.1.0`，避免按旧版装依赖时调用不存在的方法 | 无遗留动作；后续升级 Pillow 时回归视觉门确定性用例 |
 | 真实 LLM 后端产出质量验证 | 缺 `OpenAICompatibleBackend` 接真实端点跑通 Director / Researcher / Reviewer 语义路径并验收的记录 | 真实模型下的结构化产物质量、JSON 输出稳定性、语义 finding 可用性均未验证；离线结论不可外推 |
 | 渲染回看 harness 未进库方法 | PPTX → PDF → 逐页 PNG 的转换链路在 `scripts/verify.sh` / CI 外部编排；库内只提供 `gates/visual.py` 的 PNG 判定函数 | 视觉门的产物侧喂数（soffice / pdftoppm）不是库调用；库方法不能独立完成"出片后回看" |
 | Designer 独立角色类 | 当前是模块级函数集合，无统一角色对象接口与实例状态 | 不能把系统描述成"五个对等角色对象"；这是形态差异，现有函数职责已闭合 |
