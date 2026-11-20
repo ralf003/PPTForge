@@ -60,6 +60,10 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 | --- | --- | --- |
 | `track` | 沿时间或因果推进的叙事 | 轨迹 + 递进节点，底部结论带 |
 | `stat` | 并列的关键指标 | 大数字 + 短分隔线，底部结论带 |
+| 骨架 | 承载的语义 | 图面形态 |
+| --- | --- | --- |
+| `track` | 沿时间或因果推进的叙事 | 轨迹 + 递进节点，底部结论带 |
+| `stat` | 并列的关键指标 | 大数字 + 短分隔线，底部结论带 |
 | `topology` | 分层架构 | 层条自上而下，左侧层级标识，层间箭头 |
 | `hero` | 封面或全幅概念页 | 图片铺满整页，底部实色带压标题 |
 | `split` | 图文对照 | 左侧深色文字栏，右侧照片满高裁剪 |
@@ -104,8 +108,8 @@ pptforge check-visual /tmp/slide-*.png --roles cover,section,content,summary
 
 当前是 **P0**，接口在 0.x 不承诺稳定。
 
-- 已实现：五骨架、静态质量门、视觉门、CLI（build / validate / check-visual / doctor）、单页与多页五角色端到端出 PPTX，静态门兜底。
-- 未实现：Deck 级大纲冻结与封面/结论页自动生产、真实 LLM 后端产出验证、现有 PPT 的反向解析与优化、原生图表与表格渲染、MCP 入口。
+- 已实现：五骨架、静态质量门、视觉门、CLI（build / validate / check-visual / doctor）、单页与多页五角色端到端出 PPTX，以及 Deck 级大纲冻结（cover/section/content/summary 自动生产），静态门兜底。
+- 未实现：真实 LLM 后端产出验证、现有 PPT 的反向解析与优化、原生图表与表格渲染、MCP 入口、单 body 项骨架自适应。
 
 未实现的能力不会写进“已实现”清单。
 
