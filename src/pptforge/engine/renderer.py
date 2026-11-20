@@ -163,17 +163,26 @@ class Renderer:
             slide.notes_slide.notes_text_frame.text = page.note
 
     # ---- 主流程 ----
+    def _dispatch(self, page: Page) -> None:
+        """有骨架则交给骨架库（坐标由骨架算），否则退回基础四页型。"""
+        if page.skeleton:
+            from pptforge.engine.skeletons import render_skeleton
+
+            render_skeleton(self, page)
+            return
+        {
+            "cover": self._cover,
+            "section": self._section,
+            "content": self._content,
+            "summary": self._summary,
+        }[page.role](page)
+
     def render(self, deck: Deck) -> None:
         problems = deck.validate()
         if problems:
             raise ValueError("Deck 校验失败：" + "；".join(problems))
         for page in deck.pages:
-            {
-                "cover": self._cover,
-                "section": self._section,
-                "content": self._content,
-                "summary": self._summary,
-            }[page.role](page)
+            self._dispatch(page)
         fix_chart_axis_ids(self.prs)
 
     def save(self, deck: Deck, path: str | Path) -> Path:
