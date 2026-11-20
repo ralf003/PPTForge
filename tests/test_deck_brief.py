@@ -13,8 +13,10 @@ from pathlib import Path
 import pytest
 from pptx import Presentation
 
+from pptforge.models import Page
 from pptforge.roles.llm import ReplayBackend
-from pptforge.roles.pipeline import Pipeline
+from pptforge.roles.pipeline import Pipeline, ReviewExhaustedError
+from pptforge.roles.reviewer import Finding, Reviewer, Verdict
 from pptforge.roles.schemas import DeckBrief, DeckPagePlan
 
 TOPIC = "智能体操作系统的确定性质量保障"
@@ -170,6 +172,92 @@ def test_deck_gate_block_aborts_before_production(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="大纲确认门未放行"):
         pipe.build_from_brief(brief, tmp_path / "x.pptx", gate=lambda _b: False)
     assert not (tmp_path / "x.pptx").exists()
+
+
+def test_build_from_brief_rejects_invalid_brief_before_gate(tmp_path: Path) -> None:
+    """入口重放 validate()：外部直构造的缺陷大纲在确认门之前被拦。"""
+    pipe = _pipeline()
+    brief = pipe.brief_deck(TOPIC, AUDIENCE)
+    brief.thesis = ""  # 非法：论点链主线为空
+    gate_calls = 0
+
+    def gate(_b: DeckBrief) -> bool:
+        nonlocal gate_calls
+        gate_calls += 1
+        return True
+
+    with pytest.raises(ValueError, match="Deck 大纲校验失败"):
+        pipe.build_from_brief(brief, tmp_path / "x.pptx", gate=gate)
+    assert gate_calls == 0, "校验失败不得进入确认门"
+
+
+class _CriticalStaticReviewer(Reviewer):
+    """非 content 页首轮注入一条 critical，模拟出页构造缺陷。"""
+
+    def review_page(self, page: Page, page_no: int = 1) -> Verdict:
+        verdict = super().review_page(page, page_no)
+        if page.role != "content":
+            verdict.findings.append(
+                Finding(
+                    "RV001",
+                    "critical",
+                    f"P{page_no} / note",
+                    "模拟静态页构造缺陷",
+                    "补 note",
+                )
+            )
+        return verdict
+
+
+def test_static_page_critical_exposes_runtime_error(tmp_path: Path) -> None:
+    """静态页无 repair 路径：critical 直接抛 RuntimeError 暴露，不静默交付。"""
+    pipe = Pipeline(ReplayBackend(_responses()), reviewer=_CriticalStaticReviewer())
+    brief = pipe.brief_deck(TOPIC, AUDIENCE)
+    with pytest.raises(RuntimeError, match="评审出现 critical") as exc:
+        pipe.build_from_brief(brief, tmp_path / "static.pptx")
+    assert "模拟静态页构造缺陷" in str(exc.value)
+
+
+class _ContentAlwaysCriticalReviewer(Reviewer):
+    """content 页每轮都带不可修复 critical，用于打回耗尽分支。"""
+
+    def review_page(self, page: Page, page_no: int = 1) -> Verdict:
+        verdict = super().review_page(page, page_no)
+        if page.role == "content":
+            verdict.findings.append(
+                Finding(
+                    "RV001",
+                    "critical",
+                    f"P{page_no} / note",
+                    "模拟不可修复缺陷",
+                    "补 note",
+                )
+            )
+        return verdict
+
+
+def test_content_plan_exhausts_with_verdict_and_iterations(tmp_path: Path) -> None:
+    """#39 content 链路耗尽抛 ReviewExhaustedError，带最后 Verdict 与轮数。"""
+    pipe = Pipeline(
+        ReplayBackend(_responses()),
+        reviewer=_ContentAlwaysCriticalReviewer(),
+        max_iter=2,
+    )
+    brief = pipe.brief_deck(TOPIC, AUDIENCE)
+    with pytest.raises(ReviewExhaustedError) as exc:
+        pipe.build_from_brief(brief, tmp_path / "exhaust.pptx")
+    err = exc.value
+    assert err.iterations == 2
+    assert not err.verdict.ok
+
+
+def test_summary_note_carries_thesis(tmp_path: Path) -> None:
+    """thesis 写入结论页备注留档，论点链主线可追溯。"""
+    pipe = _pipeline()
+    brief = pipe.brief_deck(TOPIC, AUDIENCE)
+    result = pipe.build_from_brief(brief, tmp_path / "thesis.pptx")
+    summary = [d.page for d in result.deliveries if d.page.role == "summary"][0]
+    assert "论点链主线：确定性质量门把视觉缺陷拦在交付前" in (summary.note or "")
 
 
 def test_researcher_only_runs_for_content_pages() -> None:
