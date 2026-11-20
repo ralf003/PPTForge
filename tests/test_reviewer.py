@@ -225,7 +225,7 @@ def test_semantic_findings_never_become_critical() -> None:
 
 def test_semantic_review_silent_on_bad_backend_output() -> None:
     backend = ReplayBackend({"Reviewer（评审委员会）": "不是 JSON"})
-    verdict = Reviewer().review_page(_page())
+    verdict = Reviewer(backend).review_page(_page())
     assert verdict.ok
     assert verdict.findings == []
 
