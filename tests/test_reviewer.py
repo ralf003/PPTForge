@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -225,6 +226,49 @@ def test_semantic_findings_never_become_critical() -> None:
 
 def test_semantic_review_silent_on_bad_backend_output() -> None:
     backend = ReplayBackend({"Reviewer（评审委员会）": "不是 JSON"})
+    verdict = Reviewer(backend).review_page(_page())
+    assert verdict.ok
+    assert verdict.findings == []
+
+
+class _BoomBackend:
+    """complete() 直接抛传输 / HTTP / 系统异常的测试后端。"""
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def complete(self, prompt: str) -> str:
+        raise self._exc
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        RuntimeError("LLM 后端返回 500"),
+        urllib.error.URLError("network down"),
+        OSError("socket broken"),
+    ],
+)
+def test_semantic_silent_on_transport_failure(exc: Exception) -> None:
+    """传输 / HTTP 失败归为语义缺席：确定性判决照常，不被裸异常打断。"""
+    verdict = Reviewer(_BoomBackend(exc)).review_page(_page())
+    assert verdict.ok
+    assert verdict.findings == []
+
+
+def test_semantic_skips_non_list_findings() -> None:
+    backend = ReplayBackend(
+        {"Reviewer（评审委员会）": json.dumps({"findings": "not-a-list"})}
+    )
+    verdict = Reviewer(backend).review_page(_page())
+    assert verdict.ok
+    assert verdict.findings == []
+
+
+def test_semantic_skips_non_dict_entries() -> None:
+    backend = ReplayBackend(
+        {"Reviewer（评审委员会）": json.dumps({"findings": ["不是对象", 42]})}
+    )
     verdict = Reviewer(backend).review_page(_page())
     assert verdict.ok
     assert verdict.findings == []
