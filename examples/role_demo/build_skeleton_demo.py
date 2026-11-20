@@ -18,6 +18,41 @@ from pptforge.roles.designer import design
 from pptforge.roles.schemas import ClaimCard, PageBrief, ResearchBrief
 
 HERE = Path(__file__).parent
+IMG_DIR = HERE.resolve().parents[2] / "assets" / "final"
+
+
+def picture(name: str) -> str | None:
+    """配图不随仓库分发（二进制），存在则用，不存在则骨架自动退化。"""
+    p = IMG_DIR / name
+    return str(p) if p.exists() else None
+
+
+def hero_page() -> Page:
+    return Page(
+        role="content",
+        skeleton="hero",
+        title="智能体能不能自己把关自己的代码",
+        subtitle="从人在环中，到人在环上",
+        claim="技术对错交给评审委员会，人只保留意图与授权。",
+        image=picture("cover_gen.jpg"),
+        note="配图：image_gen 生成的概念图，2047×1152，无文字。",
+    )
+
+
+def split_page() -> Page:
+    return Page(
+        role="content",
+        skeleton="split",
+        title="三层把关",
+        subtitle="各自只回答一个问题",
+        items=[
+            Item(name="能不能合", desc="评审委员会输出硬门，全绿才合并"),
+            Item(name="错在哪", desc="变异测试与二阶验证，抓测试本身的漏洞"),
+            Item(name="值不值得", desc="人只判断意图与授权，不判断代码对错"),
+        ],
+        image=picture("p2_robot.jpg"),
+        note="配图：真实照片，用已知 ID 从 CDN 取回 1920×1280 原图。",
+    )
 
 
 def load_brief() -> ResearchBrief:
@@ -65,7 +100,11 @@ def extra_pages() -> list[Page]:
 
 def main() -> Path:
     track_page = design(load_brief())
-    deck = Deck(title="骨架库实证", author="PPTForge", pages=[track_page, *extra_pages()])
+    deck = Deck(
+        title="骨架库实证",
+        author="PPTForge",
+        pages=[hero_page(), track_page, *extra_pages(), split_page()],
+    )
     out = render_deck(deck, HERE / "skeleton_demo.pptx")
     report = run_gates(Presentation(str(out)))
     print(f"已生成：{out}")
