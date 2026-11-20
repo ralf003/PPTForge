@@ -9,6 +9,7 @@ import pytest
 from pptforge.roles import Pipeline, ReplayBackend
 from pptforge.roles.director import Director
 from pptforge.roles.researcher import Researcher
+from pptforge.roles.schemas import ClaimCard, PageBrief
 
 
 def _backend() -> ReplayBackend:
@@ -80,3 +81,52 @@ def test_invalid_llm_output_rejected() -> None:
     )
     with pytest.raises(ValueError):
         Director(bad).brief_page("t")
+
+
+# ---- Researcher 组装层负向集：畸形结构统一归一化为 ValueError ----
+
+
+def _research_brief() -> PageBrief:
+    return PageBrief(topic="测试主题", claim="本页核心判断", page_role="content")
+
+
+def _researcher(payload: str) -> Researcher:
+    return Researcher(ReplayBackend({"Researcher（研究专家）": payload}))
+
+
+_BAD_CASES: list[tuple[str, str]] = [
+    ("空 cards", json.dumps({"cards": []}, ensure_ascii=False)),
+    ("缺 claim", json.dumps({"cards": [{"support": "支持句"}]}, ensure_ascii=False)),
+    ("缺 support", json.dumps({"cards": [{"claim": "主张"}]}, ensure_ascii=False)),
+    ("cards 非 list", json.dumps({"cards": "not-a-list"}, ensure_ascii=False)),
+    ("cards 为 null", json.dumps({"cards": None}, ensure_ascii=False)),
+    ("evidence 标量字符串", json.dumps(
+        {"cards": [{"claim": "x", "support": "s", "evidence": "论文A 2026"}]},
+        ensure_ascii=False)),
+    ("evidence 为 dict", json.dumps(
+        {"cards": [{"claim": "x", "support": "s", "evidence": {"url": "x"}}]},
+        ensure_ascii=False)),
+    ("evidence 含非字符串", json.dumps(
+        {"cards": [{"claim": "x", "support": "s", "evidence": [123]}]},
+        ensure_ascii=False)),
+    ("evidence 全空白", json.dumps(
+        {"cards": [{"claim": "x", "support": "s", "evidence": ["", "   "]}]},
+        ensure_ascii=False)),
+]
+
+
+@pytest.mark.parametrize("name,payload", _BAD_CASES)
+def test_researcher_rejects_malformed_cards(name: str, payload: str) -> None:
+    with pytest.raises(ValueError, match="Researcher 产物校验失败"):
+        _researcher(payload).research(_research_brief())
+
+
+def test_card_allows_gap_without_evidence() -> None:
+    """暂无可核验证据时，gap 非空即合规，不再逼迫编造占位证据。"""
+    card = ClaimCard(claim="x", support="s", evidence=[], gap="信息不足，未能证实")
+    assert card.validate() == []
+
+
+def test_card_rejects_empty_evidence_and_gap() -> None:
+    card = ClaimCard(claim="x", support="s", evidence=[], gap=None)
+    assert any("evidence" in p for p in card.validate())
