@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pptforge"
 version = "0.1.0"
-description = "声明式工程化 PPT 生产工具链：产出本地可编辑 PPTX，覆盖从零生成与现有 PPT 优化"
+description = "声明式工程化 PPT 生产工具链：从声明式 spec 产出本地可编辑 PPTX，工程化质量门兜底"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
