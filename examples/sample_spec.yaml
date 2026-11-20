@@ -12,7 +12,9 @@ pages:
     note: 强调当前多数智能体停留在 Demo 阶段，生产可靠性存在系统性缺口。
 
   - role: content
+    skeleton: track
     title: 生产落地的三类核心挑战
+    claim: 三类挑战都不是单点故障，而是沿轨迹放大的链路问题。
     items:
       - name: 误差级联
         desc: 单步高成功率在长链路上指数级坍缩，错误沿轨迹传播
@@ -28,7 +30,9 @@ pages:
     note: 过渡到解决方案，强调用工程机制而非提示词兜底。
 
   - role: content
+    skeleton: track
     title: 五角色协同的生产架构
+    claim: 把语义判断与视觉渲染分开，用确定性门禁兜底下限。
     items:
       - name: 角色分离
         desc: 语义判断与视觉渲染解耦，结构化产物交接
