@@ -67,7 +67,7 @@ Director.brief_page ──▶ PageBrief ──gate(Gate)──▶ Researcher.res
 | 角色 | 形态 | 产出 dataclass | 校验入口 | 边界 |
 | --- | --- | --- | --- | --- |
 | Director | 类 `Director`（`roles/director.py`） | `PageBrief`（topic / claim / page_role / audience / principles） | `PageBrief.validate()`：topic、claim 非空，page_role ∈ `ROLES` | 只定本页唯一主张与页型，不收集证据；产物校验失败抛 `ValueError` |
-| Researcher | 类 `Researcher`（`roles/researcher.py`） | `ResearchBrief`（brief + `ClaimCard[]`）；`ClaimCard` 含 claim / support / evidence / gap | `ResearchBrief.validate()` → 逐卡 `ClaimCard.validate()`：claim、support 非空，evidence 至少一条 | 证据不足写进 `gap`，禁止编造；当前后端不具备联网能力，接地需调用方提供后端 |
+| Researcher | 类 `Researcher`（`roles/researcher.py`） | `ResearchBrief`（brief + `ClaimCard[]`）；`ClaimCard` 含 claim / support / evidence / gap | `ResearchBrief.validate()` → 逐卡 `ClaimCard.validate()`：claim、support 非空，evidence 或 gap 至少其一；组装层做类型守卫与 evidence 清洗 | 证据不足写进 `gap`，禁止编造；当前后端不具备联网能力，接地需调用方提供后端 |
 | Designer | **模块级函数集合**（`roles/designer.py`）：`design` / `repair` / `pick_skeleton`，无独立角色类 | `Page` | `design()` 先跑 `ResearchBrief.validate()`；`repair()` 修复后跑 `Page.validate()` | 只产语义与骨架选择，不产坐标；确定性规则是 LLM 不可用时的替身 |
 | Reviewer | 类 `Reviewer`（`roles/reviewer.py`） | `Verdict`（`Finding[]`：code / severity / target / message / fix） | `Verdict.ok`：无 critical 即放行；warning / info 不阻断 | `backend=None` 纯确定性零网络；接后端时语义 findings 最高 warning，不构成硬门 |
 | Engine（渲染引擎） | 类 `Renderer`（`engine/renderer.py`）+ 骨架函数（`engine/skeletons.py`）+ 桥接 `engine/bridge.py` | PPTX 文件 | `Renderer.render()` 先跑 `Deck.validate()`；`bridge.render_verified` 重开产物跑 `run_gates` | 经 `bridge` 被 `Pipeline.build_pptx` 接入单页闭环（静态门不通过抛 `EngineQualityError`）；CLI `cmd_build` 仍直调 `Renderer().save(deck, output)` |
@@ -163,11 +163,13 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 
 现有测试中可恢复分支是两条人工触发路径：测试子类化 `Reviewer` 在首轮注入一条 RV001（`tests/test_pipeline_loop.py` 的 `_FirstRoundMissingNote`）；或直接构造未加工的 `Page` 喂给 `repair()`。RV003 耗尽路径由 `skeleton="hero"` 直喂触发。
 
+**warning 级缺陷的交付后果（必须写明）**：循环条件只看 `criticals`，warning / info 不阻断交付，也不触发 repair。warning 仅在同轮 verdict 存在 critical、repair 被调用时随同一轮按码附带处理；warning-only 判决的页带 finding 原样交付，`repair()` 的 RV004 / RV005 / RV006 / RV007 分支在该路径下是死路径。即：离线自然链路若产出 RV004–RV007，对应 finding 随交付物返回、不被自动清除，需人工过目。
+
 结论：**"端到端自动修复已验证"这一说法不成立**。闭环机制（打回、修复、重评、超限升级）有单测覆盖，但可恢复 critical 在纯离线自然链路里不会出现；接真实后端后该分支能否被真实触发、修复是否收敛，尚未验证。
 
 ### 6.4 语义评审路径现状
 
-`Reviewer(backend)` 时额外跑一轮 `_semantic()`：后端输出 JSON findings，解析失败或非法时静默缺席，不阻断确定性判决；语义 finding 的 critical 一律降级为 warning（`reviewer.py` 中 severity == "critical" 改写为 "warning"）。该路径目前只有 `ReplayBackend` 单测覆盖（`tests/test_reviewer.py` 的 `test_semantic_findings_never_become_critical`、`test_semantic_review_silent_on_bad_backend_output`），**未接真实 LLM 验证过产出质量**。
+`Reviewer(backend)` 时额外跑一轮 `_semantic()`：后端输出 JSON findings，解析失败、传输 / HTTP / 系统异常或非法时静默缺席，不阻断确定性判决；语义 finding 的 critical 一律降级为 warning（`reviewer.py` 中 severity == "critical" 改写为 "warning"）。该路径目前只有 `ReplayBackend` 单测覆盖（`tests/test_reviewer.py` 的 `test_semantic_findings_never_become_critical`、`test_semantic_review_silent_on_bad_backend_output`），**未接真实 LLM 验证过产出质量**。
 
 ## 7. 已实现 / 未实现清单
 
@@ -176,8 +178,8 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 | 能力 | 代码位置 | 证据 |
 | --- | --- | --- |
 | 声明式模型与 YAML 加载校验 | `models.py`：`Deck` / `Page` / `Item`、`Deck.load`、`Deck.validate`、`Page.validate` | 页型白名单 `ROLES`，骨架白名单 `SKELETONS` |
-| Director 角色 | `roles/director.py`：`Director.brief_page` → `PageBrief`、`Director.brief_deck` → `DeckBrief`；`default_structure` | `PageBrief.validate()` 校验单页；`DeckBrief.validate()` 校验页序（首 cover/末 summary）、骨架与重复主张 |
-| Researcher 角色 | `roles/researcher.py`：`Researcher.research` → `ResearchBrief` | `ClaimCard.validate()` 要求 evidence 至少一条 |
+| Director 角色 | `roles/director.py`：`Director.brief_page` → `PageBrief`、`Director.brief_deck` → `DeckBrief`；`default_structure` | `PageBrief.validate()` 校验单页；`DeckBrief.validate()` 校验 thesis 非空、页序（首 cover/末 summary）、骨架与重复主张 |
+| Researcher 角色 | `roles/researcher.py`：`Researcher.research` → `ResearchBrief` | 组装层类型守卫 + evidence 清洗；`ClaimCard.validate()` 要求 evidence 或 gap 至少其一 |
 | Designer 模块函数 | `roles/designer.py`：`design` / `repair` / `pick_skeleton`、`design_page` / `design_summary` | 按页型分发，cover/section 不需研究；无独立角色类（见 7.2 第 3 条） |
 | Reviewer 确定性评审 | `roles/reviewer.py`：`Reviewer.review_page` / `review` → `Verdict` / `Finding` | RV001–RV008；`backend=None` 零网络可复现 |
 | 单页闭环编排 | `roles/pipeline.py`：`Pipeline.build_page` → `Delivery` | `max_iter=3`，耗尽抛 `ReviewExhaustedError` 并带最后 Verdict |
@@ -199,7 +201,8 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 
 | 未实现项 | 缺什么 | 影响 |
 | --- | --- | --- |
-| 单 body 项 content 页留白 | 当 Researcher 只产出 2 张卡时，末张升格结论带后正文仅 1 项：单节点 track、单条 topology 会被视觉门判留白（实测 37.1%/28.9% > 28%）。当前靠 Researcher 标准口径（2–4 卡、正文至少 2 项）规避，骨架对"单 body 项"的自适应版式未做 | 真实后端若只回 2 卡会交付留白页并被视觉门拦下；骨架单 item 自适应是独立工作项，本版未改骨架契约 |
+| 单 body 项骨架自适应（已落地，留口径备查） | track / stat / topology 单条目切换居中放大版式：隐藏仅多元素才有意义的部件（track 轨迹方向标签、topology 层间箭头），元素在内容区水平 + 垂直居中；容量硬门 track/stat/split=4、topology=5，超容量与空条目抛 `ValueError`，不静默截断或退化为标题页。stat 无量化值时不渲染大号占位符，名称作为主元素落在一条全宽内容条内（与 topology 层条同一组件语言，条体承载名称、非装饰空底板）。变体稳健性实测（content 档，`-r 110`，覆盖有/无 desc、短/长 name、有/无 value，均带结论带）：最差 track max_empty 21.4%、stat 20.4%、topology 18.2%，ink 最低 26.6%，均过 15%/28% 阈值且留 ≥3pp 余量 | hero / split 配图供给链路仍缺（见下条与 D-01）；单 item 自适应只覆盖 track/stat/topology 三骨架。视觉门 ink 口径在离线合成样本下依赖结论带；无 claim 的 content 页 ink 偏薄为既有特性，自然流 ≥2 卡必挂结论带 |
+| Pillow `getdata()` 弃用 API（已迁移） | `gates/visual.py` 已由 `Image.getdata()` 迁移为 `get_flattened_data()`，返回形态一致（RGB 下 `list[tuple[int,int,int]]`），消除 Pillow 14 移除前的 DeprecationWarning | 无遗留动作；后续升级 Pillow 时回归视觉门确定性用例 |
 | 真实 LLM 后端产出质量验证 | 缺 `OpenAICompatibleBackend` 接真实端点跑通 Director / Researcher / Reviewer 语义路径并验收的记录 | 真实模型下的结构化产物质量、JSON 输出稳定性、语义 finding 可用性均未验证；离线结论不可外推 |
 | 渲染回看 harness 未进库方法 | PPTX → PDF → 逐页 PNG 的转换链路在 `scripts/verify.sh` / CI 外部编排；库内只提供 `gates/visual.py` 的 PNG 判定函数 | 视觉门的产物侧喂数（soffice / pdftoppm）不是库调用；库方法不能独立完成"出片后回看" |
 | Designer 独立角色类 | 当前是模块级函数集合，无统一角色对象接口与实例状态 | 不能把系统描述成"五个对等角色对象"；这是形态差异，现有函数职责已闭合 |
@@ -229,4 +232,4 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 - **错误能否收敛。** 一键链路里，版面问题（溢出、重叠、对比度不足、留白过大）混在自然语言产出里，发现后只能整体重来，无法定位到可修复的规则项。本仓库把错误切成可执行判决：静态门与视觉门输出定位到页与字段的 issue，评审 finding 带稳定规则码与 `fix` 方向，`repair()` 按码做确定性修复，超限才升级人工。
 - **产物能否审计。** 一键产出的是不可回溯的成片；本仓库的产物是经过 `Deck.validate` / `Page.validate` / 规则判决的结构化 `Page` + 可编辑 OOXML，证据与口径进 `note` 留档，门禁结论可在 CI 干净环境复现。
 
-需要说明：单页、多页以及 Deck 级大纲冻结（含非 content 页）的端到端出 PPTX 均已成立（`build_pptx` / `build_deck` / `build_from_brief` 渲染并过静态门，见 7.1）；真实后端下的收敛性、单 body 项骨架自适应尚未落地（见 7.2）。
+需要说明：单页、多页以及 Deck 级大纲冻结（含非 content 页）的端到端出 PPTX 均已成立（`build_pptx` / `build_deck` / `build_from_brief` 渲染并过静态门，见 7.1）；track / stat / topology 单 body 项自适应已落地（见 7.2），真实后端下的打回—修复—收敛性尚未验证。
