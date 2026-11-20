@@ -131,7 +131,11 @@ def analyze(
         min_ink, max_empty = limits_for(role)
     path = Path(png)
     img = Image.open(path).convert("RGB").resize((GRID_W, GRID_H), Image.Resampling.BOX)
-    pixels = list(img.getdata())
+    flattened = img.get_flattened_data()
+    pixels: list[tuple[int, int, int]] = [
+        (px[0], px[1], px[2]) if isinstance(px, tuple) else (int(px), int(px), int(px))
+        for px in flattened
+    ]
     counts = Counter(pixels)
     bg, bg_count = counts.most_common(1)[0]
     # 深色满版页：同色大面积是设计（封面/分隔），只判"是否有字"，不判留白
