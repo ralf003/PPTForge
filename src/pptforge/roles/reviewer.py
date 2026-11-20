@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -251,8 +252,16 @@ class Reviewer:
         )
         try:
             data = extract_json(self.backend.complete(_REVIEW_PROMPT.format(page_text=page_text)))
-        except (ValueError, json.JSONDecodeError, KeyError, TypeError):
-            # 后端不可用或输出非法：语义评审静默缺席，不阻断确定性判决
+        except (
+            ValueError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            RuntimeError,
+            urllib.error.URLError,
+            OSError,
+        ):
+            # 解析失败，或传输 / HTTP / 后端不可用：语义评审静默缺席，不阻断确定性判决
             return []
         raw_findings = data.get("findings", [])
         if not isinstance(raw_findings, list):
