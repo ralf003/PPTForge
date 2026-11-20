@@ -141,3 +141,31 @@ jobs:
               gh issue create --title "CI 失败工单：${SHORT}（${BR}）" --body-file "$BODY_FILE"
             fi
           fi
+
+  # 关闭已修复工单：质量门全绿时，自动评论并关闭所有 open 的 ci-failure 工单。
+  # 与 failure-ticket 互斥（success vs failure），关单动作在 Actions 内完成，不依赖外部表单。
+  close-ticket:
+    name: 关闭已修复工单
+    needs: [quality, render-preview]
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 关闭已修复的 CI 失败工单
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          nums="$(gh issue list --state open --label ci-failure --json number --jq '.[].number' 2>/dev/null || true)"
+          if [ -z "$nums" ]; then
+            echo "无待关闭工单"
+            exit 0
+          fi
+          for n in $nums; do
+            gh issue comment "$n" --body "已修复并验证全绿：${RUN_URL}"
+            gh issue close "$n" --reason completed
+            echo "已评论并关闭工单 #${n}"
+          done
