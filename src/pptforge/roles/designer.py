@@ -179,8 +179,12 @@ def design_summary(
     content_pages: list[Page],
     *,
     deck_title: str,
+    thesis: str | None = None,
 ) -> Page:
-    """结论页：把各 content 页的判断句收束成结论条目，证据口径进备注。"""
+    """结论页：把各 content 页的判断句收束成结论条目，证据口径进备注。
+
+    thesis（整份大纲的论点链主线）写入备注留档，使主线可追溯，不占图面。
+    """
     items = [
         Item(name=(page.claim or page.title).split("\n")[0].strip())
         for page in content_pages
@@ -189,11 +193,14 @@ def design_summary(
         # 没有 content 页时至少保留结论页自身主张，禁止空 summary
         items = [Item(name=plan.claim)]
     extra = "结论收束自各 content 页判断句，细节见对应页备注"
+    note = _frozen_note(plan, deck_title, extra)
+    if thesis and thesis.strip():
+        note = f"{note}\n论点链主线：{thesis.strip()}"
     return Page(
         role="summary",
         title=plan.claim,
         items=items,
-        note=_frozen_note(plan, deck_title, extra),
+        note=note,
     )
 
 
