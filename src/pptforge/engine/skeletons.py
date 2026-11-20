@@ -277,10 +277,106 @@ def _topology(r: Renderer, page: Page) -> None:
     _notes(slide, page)
 
 
+# ---------------- 骨架：hero（全幅图） ----------------
+HERO_BAND_H = 2.60
+
+
+def _fill_picture(slide, path: str, x: float, y: float, w: float, h: float):
+    """按目标框裁剪铺满，不拉伸变形。"""
+    pic = slide.shapes.add_picture(str(path), Inches(x), Inches(y), Inches(w), Inches(h))
+    iw, ih = pic.image.size  # (px_w, px_h)
+    if not iw or not ih:
+        return pic
+    img_r, box_r = iw / ih, w / h
+    if img_r > box_r:  # 图更宽 → 左右各裁一半
+        cut = (1 - box_r / img_r) / 2
+        pic.crop_left = cut
+        pic.crop_right = cut
+    elif img_r < box_r:  # 图更高 → 上下各裁一半
+        cut = (1 - img_r / box_r) / 2
+        pic.crop_top = cut
+        pic.crop_bottom = cut
+    return pic
+
+
+def _hero(r: Renderer, page: Page) -> None:
+    """全幅图打底，底部实色带压标题与判断句；不用半透明，避免跨端渲染差异。"""
+    theme = r.theme
+    p, s = theme.palette, theme.scale
+    slide = r._add_slide(p.dark)
+    if page.image:
+        _fill_picture(slide, page.image, 0, 0, theme.slide_width_in, theme.slide_height_in)
+
+    band_y = theme.slide_height_in - HERO_BAND_H
+    _rect(slide, 0, band_y, theme.slide_width_in, HERO_BAND_H, p.dark)
+    _rect(slide, 0.92, band_y + 0.40, 0.12, 0.66, p.cyan)
+    r._add_text(
+        slide, 1.18, band_y + 0.30, 11.2, 0.92,
+        [(page.title, s.cover_title - 10, p.white, True)],
+    )
+    if page.subtitle:
+        r._add_text(
+            slide, 1.18, band_y + 1.24, 11.2, 0.52,
+            [(page.subtitle, s.cover_sub - 6, p.cyan, False)],
+        )
+    if page.claim:
+        main = (page.claim or "").split("\n")[0]
+        r._add_text(
+            slide, 1.18, band_y + 1.82, 11.2, 0.52, [(main, s.body - 4, p.white, False)]
+        )
+    _notes(slide, page)
+
+
+# ---------------- 骨架：split（左文右图） ----------------
+SPLIT_COL_W = 5.05
+
+
+def _split(r: Renderer, page: Page) -> None:
+    """左侧实色文字栏，右侧图满高；文字与图各占一侧，互不压盖。"""
+    theme = r.theme
+    p, s = theme.palette, theme.scale
+    slide = r._add_slide(p.panel)
+    if page.image:
+        _fill_picture(
+            slide, page.image, SPLIT_COL_W, 0,
+            theme.slide_width_in - SPLIT_COL_W, theme.slide_height_in,
+        )
+    _rect(slide, 0, 0, SPLIT_COL_W, theme.slide_height_in, p.panel)
+    _rect(slide, 0.62, 0.60, 0.10, 0.60, p.cyan)
+    r._add_text(
+        slide, 0.88, 0.50, SPLIT_COL_W - 1.3, 0.95,
+        [(page.title, s.page_title - 8, p.white, True)],
+    )
+    if page.subtitle:
+        r._add_text(
+            slide, 0.88, 1.48, SPLIT_COL_W - 1.3, 0.45,
+            [(page.subtitle, s.section_label + 1, p.cyan, False)],
+        )
+
+    items = page.items[:4]
+    top = 2.20
+    bottom = 7.02
+    row = (bottom - top) / max(1, len(items))
+    for item in items:
+        r._add_text(
+            slide, 0.88, top, SPLIT_COL_W - 1.2, 0.46,
+            [(item.name, s.item_name - 2, p.white, True)],
+        )
+        if item.desc:
+            r._add_text(
+                slide, 0.88, top + 0.52, SPLIT_COL_W - 1.2, max(0.38, row - 0.58),
+                [(item.desc, s.body - 4, p.cyan, False)],
+            )
+        top += row
+    _notes(slide, page)
+
+
 REGISTRY: dict[str, Callable[[Renderer, Page], None]] = {
     "track": _track,
     "stat": _stat,
     "topology": _topology,
+    "hero": _hero,
+    "split": _split,
 }
 
 
