@@ -16,7 +16,7 @@ from pathlib import Path
 
 from pptforge.engine import bridge
 from pptforge.gates.checks import GateReport
-from pptforge.models import Page
+from pptforge.models import Deck, Page
 from pptforge.roles.designer import design, repair
 from pptforge.roles.director import Director
 from pptforge.roles.llm import LLMBackend
@@ -47,6 +47,25 @@ class PptxDelivery:
 
     pptx: Path
     delivery: Delivery
+    gate_report: GateReport
+
+
+@dataclass
+class DeckPageSpec:
+    """多页 Deck 中一页的输入规格：逐页独立走闭环，页间不共享上下文。"""
+
+    topic: str
+    audience: str = "通用技术听众"
+    page_role: str = "content"
+    skeleton: str | None = None
+
+
+@dataclass
+class DeckDelivery:
+    """多页闭环出片交付物：PPTX 路径、逐页 Delivery 列表、整份静态门报告。"""
+
+    pptx: Path
+    deliveries: list[Delivery]
     gate_report: GateReport
 
 
@@ -139,3 +158,39 @@ class Pipeline:
         if not report.ok:
             raise bridge.EngineQualityError(report.issues)
         return PptxDelivery(pptx=pptx, delivery=delivery, gate_report=report)
+
+    def build_deck(
+        self,
+        specs: list[DeckPageSpec],
+        output: str | Path,
+        *,
+        deck_title: str | None = None,
+        gate: Gate = auto_gate,
+    ) -> DeckDelivery:
+        """多页闭环出片：逐页跑 `build_page`，组装成 Deck 后整份过静态门。
+
+        注意当前 Designer 只产出 role=content 的页，cover/section/summary
+        暂不能经此链路生成；逐页确认门按页调用，Deck 级论点链冻结
+        （Director 一次冻结整份大纲）是后续独立工作项。
+        """
+        if not specs:
+            raise ValueError("build_deck 至少需要一个页面规格")
+        deliveries: list[Delivery] = []
+        for spec in specs:
+            deliveries.append(
+                self.build_page(
+                    spec.topic,
+                    spec.audience,
+                    spec.page_role,
+                    gate,
+                    spec.skeleton,
+                )
+            )
+        deck = Deck(
+            title=deck_title or f"PPTForge {len(specs)} 页 Deck",
+            pages=[d.page for d in deliveries],
+        )
+        pptx, report = bridge.render_deck_with_report(deck, output)
+        if not report.ok:
+            raise bridge.EngineQualityError(report.issues)
+        return DeckDelivery(pptx=pptx, deliveries=deliveries, gate_report=report)
