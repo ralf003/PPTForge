@@ -57,6 +57,8 @@ pptforge build examples/sample_spec.yaml -o /tmp/check.pptx
 - **教训（阴影，实证）**：`add_shape` 会写 `<p:style>` 引用主题 `effectRef`，只设 `shadow.inherit=False` 或清 `spPr/effectLst` 都去不掉阴影，LibreOffice 与 PowerPoint 都会照旧渲染。必须删除整个 `<p:style>` 元素。这是"肉眼才看得见"的缺陷，门禁不覆盖，只能靠渲染回看。
 - **教训（数值抽取，实证）**：从证据文本抽"关键量化"时，正则必须带量纲约束（`%|万|亿|倍`）。只写 `\d+` 会把 arXiv 编号 `2601.22984`、年份 `2026`、步数识别成指标，图面出现 `2601.22984 → 36` 这类垃圾。规则抽取只是 LLM 的替身，接后端后应改为语义判断。
 - **教训（空卡片，实证）**：为消除留白而给指标加"撑满内容区的底板"，会把页面变成三块大空卡片，正是被批评的格阵式。正确做法是内容块按实际高度垂直居中，再用结论带填底部。
+- **教训（契约与实现必须同一次提交，run #26 实证）**：`models.SKELETONS` 白名单与引擎 `REGISTRY` 契约分离推送时，中间提交必然红——`test_registry_matches_model_contract` 会断言两者相等。这是刻意设计的契约螺丝，但在 CI 页面上只表现为三矩阵 `exit code 1`、无注解，极易被误判成环境抖动。新增骨架时，注册表、白名单、测试三处必须在同一个 commit 内落地。
+- **教训（验证方法，实证）**：在 clone B 目录里跑 pytest，若解释器来自 clone A 的 editable 安装（`pip install -e`），导入的是 A 的源码，跑出来的绿是假的。验证某个目录的代码，必须让该目录优先于 site-packages：`PYTHONPATH=$PWD/src python -m pytest`，或为该 clone 单独建 venv。跨目录的 editable 安装会静默污染结论。
 - 每个骨架页面必须挂 `note`：证据、缺口、口径一律进备注，不占图面。
 
 ## 4. 安全红线
