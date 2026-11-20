@@ -68,25 +68,26 @@ def load_brief() -> ResearchBrief:
 
 
 def extra_pages() -> list[Page]:
-    """stat / topology 两页用于验证骨架对其它内容形态的承载力。"""
+    """stat / topology 两页用于验证骨架对其它内容形态的承载力。
+
+    图面只留结构化名称与数值；口径、假设与待核实项一律进 note。
+    """
     stat = Page(
         role="content",
         skeleton="stat",
         title="三个量化指标界定了问题边界",
-        subtitle="口径见页面备注",
         items=[
             Item(name="长程成功率", desc="超 40 步任务", value="12%"),
             Item(name="未治理 token", desc="单任务轨迹重放", value="180万"),
             Item(name="治理后 token", desc="确定性控制介入", value="6万"),
         ],
         claim="瓶颈在治理成本，不在单步能力。",
-        note="12% 为厂商口径，步数假设待核实；token 数据来自 UK AISI 红队实验。",
+        note="口径：12% 为厂商口径、步数假设待核实；token 数据来自 UK AISI 红队实验。",
     )
     topo = Page(
         role="content",
         skeleton="topology",
         title="四层分工：判断在上，约束在下",
-        subtitle="本页层级为通用分工示意",
         items=[
             Item(name="接入层", desc="指令解析 / 权限校验 / 人类闸口"),
             Item(name="编排层", desc="Director / Researcher / Designer"),
