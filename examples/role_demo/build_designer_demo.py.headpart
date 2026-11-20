@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches
+
+from pptforge.engine.renderer import Renderer, _rgb
+from pptforge.engine.skeletons import _no_shadow
+from pptforge.models import Page
+from pptforge.roles.schemas import ClaimCard, PageBrief, ResearchBrief
+
+HERE = Path(__file__).parent
+
+# 设计参数：手工坐标版（对照用，已被骨架库取代）
+TRACK_Y = 4.9
+NODE_XS = (2.55, 6.55, 10.55)
+NODE_D = (0.30, 0.44, 0.58)  # 直径递进 = 级联放大
+NODE_COLORS = ("1F6FEB", "F59E0B", "DC2626")  # 正常 -> 偏移 -> 失控
+CARD_W = 3.8
+KEY_FACTS = ("90% → 12%", "跳步·误引·livelock", "180万→6万")
+
+
+def load_brief() -> ResearchBrief:
+    raw = json.loads((HERE / "researcher.json").read_text("utf-8"))["cards"]
+    return ResearchBrief(
+        brief=PageBrief(
+            topic="智能体长程任务失败机理",
+            claim="规模化的瓶颈是长程轨迹与治理，不是模型能力",
+            page_role="content",
+        ),
+        cards=[ClaimCard(**c) for c in raw],
+    )
+
+
+def _circle(slide, cx, cy, d, color):
+    from pptx.enum.shapes import MSO_SHAPE
+
+    s = slide.shapes.add_shape(
+        MSO_SHAPE.OVAL, Inches(cx - d / 2), Inches(cy - d / 2), Inches(d), Inches(d)
+    )
+    s.fill.solid()
+    s.fill.fore_color.rgb = _rgb(color)
+    s.line.fill.background()
+    _no_shadow(s)
+    return s
+
+
+def _rect(slide, x, y, w, h, color):
+    from pptx.enum.shapes import MSO_SHAPE
+
+    s = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+    s.fill.solid()
+    s.fill.fore_color.rgb = _rgb(color)
+    s.line.fill.background()
+    _no_shadow(s)
+    return s
