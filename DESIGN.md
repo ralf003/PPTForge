@@ -189,7 +189,7 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 | 确定性渲染引擎 | `engine/renderer.py`：`Renderer.render` / `save` / `_dispatch`；`engine/ooxml_fix.py: fix_chart_axis_ids` | 原生可编辑 shape；保存前修轴 ID |
 | 静态质量门 | `gates/checks.py`：`run_gates` → `GateReport` | 字体字号 / 越界 / 对比度 / 溢出 / 重叠五类检查 |
 | 视觉门 | `gates/visual.py`：`run_visual_gates` / `analyze` / `limits_for` | 墨迹覆盖率、最大空白块，按 `ROLE_LIMITS` 分档，深底满版豁免 |
-| CLI 入口 | `cli.py`：`doctor` / `build` / `validate` / `review`（`--json`） / `check-visual` | `review` 有 critical 时 exit 1 |
+| CLI 入口 | `cli.py`：`doctor` / `build` / `validate` / `review`（`--json`）/ `check-visual` | `review` 有 critical 时 exit 1 |
 | 本地一键验收 | `scripts/verify.sh` | 与 CI 同款链路，支持 `--skip-visual` |
 | CI 两条 job | `.github/workflows/ci.yml`：`quality`（三矩阵）、`render-preview` | render-preview 在 pdftoppm 后真跑 `check-visual`，报告 tee 到 `/tmp/visual-report.txt` 并随 artifact 上传；job 级 `continue-on-error: true` |
 | LLM 后端抽象 | `roles/llm.py`：`LLMBackend` Protocol、`ReplayBackend`、`OpenAICompatibleBackend`、`extract_json`、`default_backend` | 凭据走环境变量 `PPTFORGE_LLM_BASE_URL / API_KEY / MODEL` |
@@ -220,13 +220,13 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 2. **让 agent 手写 Inches 坐标。** 坐标绑定画布尺寸与字体度量，换尺寸即崩；内容长度抖动会带动位置漂移，错误不可收敛，也无法写测试断言。现状契约：`design()` 只回吐语义，坐标全部在骨架内计算（`skeletons.py` 模块docstring："骨架不接收任何坐标参数"）。
 3. **为消除留白给指标加撑满内容区的底板。** 实测（AGENTS.md 3.1 空卡片教训）：底板把页面变成三块大空卡片，正是被批评的格阵式。`_stat` 的做法是块高由内容决定、在内容区垂直居中，不靠撑满底板制造空卡片。
 4. **未知骨架静默降级到基础页型。** 静默降级会让"看起来渲染成功"掩盖契约破坏：选了不存在的骨架，语义意图没有被正确承载，却不报错。现状：`render_skeleton()` 对未注册骨架直接抛 `ValueError`；`Page.validate()` 先用 `SKELETONS` 白名单拦下。
-5. **骨架几何依赖内容长度抖动或随机量。** 同一份内容在不同次运行、同一份内容在不同次运行、不同画布尺寸下必须成立；长度只允许影响字号分档（如 `_value_size` 按字符数选 66/52/42/34pt），不允许改变位置关系。
+5. **骨架几何依赖内容长度抖动或随机量。** 同一份内容在不同次运行、不同画布尺寸下必须成立；长度只允许影响字号分档（如 `_value_size` 按字符数选 66/52/42/34pt），不允许改变位置关系。
 
 ## 9. 与"直接让 LLM 一键生成 PPT"的本质区别
 
 分歧不在生成质量高低，而在两个工程属性：
 
 - **错误能否收敛。** 一键链路里，版面问题（溢出、重叠、对比度不足、留白过大）混在自然语言产出里，发现后只能整体重来，无法定位到可修复的规则项。本仓库把错误切成可执行判决：静态门与视觉门输出定位到页与字段的 issue，评审 finding 带稳定规则码与 `fix` 方向，`repair()` 按码做确定性修复，超限才升级人工。
-- **产物能否审计。** 一键产出的是不可回溯的成片；本仓库的产物是经过 `Deck.validate` / `Page.validate` / 规则判决的结构化 `Page` + 可编辑 OOXML，资料与口径进 `note` 留档，门禁结论可在 CI 干净环境复现。
+- **产物能否审计。** 一键产出的是不可回溯的成片；本仓库的产物是经过 `Deck.validate` / `Page.validate` / 规则判决的结构化 `Page` + 可编辑 OOXML，证据与口径进 `note` 留档，门禁结论可在 CI 干净环境复现。
 
 需要说明：单页、多页以及 Deck 级大纲冻结（含非 content 页）的端到端出 PPTX 均已成立（`build_pptx` / `build_deck` / `build_from_brief` 渲染并过静态门，见 7.1）；真实后端下的收敛性、单 body 项骨架自适应尚未落地（见 7.2）。
