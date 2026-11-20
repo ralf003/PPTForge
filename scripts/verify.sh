@@ -56,6 +56,10 @@ DECK_PPTX="/tmp/verify_deck.pptx"
 DECK_PDF="/tmp/verify_deck.pdf"
 DECK_SLIDE_PREFIX="/tmp/verify_deck-slide"
 DECK_SLIDE_GLOB="${DECK_SLIDE_PREFIX}-*.png"
+BRIEF_PPTX="/tmp/verify_brief.pptx"
+BRIEF_PDF="/tmp/verify_brief.pdf"
+BRIEF_SLIDE_PREFIX="/tmp/verify_brief-slide"
+BRIEF_SLIDE_GLOB="${BRIEF_SLIDE_PREFIX}-*.png"
 
 STEP="（未开始）"
 trap 'code=$?; echo ""; echo "✗ 验收失败：步骤 [${STEP}] 退出码 ${code}"; exit 1' ERR
@@ -105,6 +109,13 @@ else
   run_step "多页 soffice 转 PDF" soffice --headless --convert-to pdf --outdir /tmp "${DECK_PPTX}"
   run_step "多页 pdftoppm 出图" pdftoppm -png -r 110 "${DECK_PDF}" "${DECK_SLIDE_PREFIX}"
   run_step "多页 check-visual 视觉门" "${PPTFORGE}" check-visual ${DECK_SLIDE_GLOB} --roles content,content,content
+
+  # ---- Deck 级大纲冻结 + 非 content 页：cover/section/content/summary 五页 ----
+  run_step "Deck 冻结 e2e 出片" "${PYTHON}" scripts/e2e_deck_brief.py "${BRIEF_PPTX}"
+  rm -f "${BRIEF_PDF}" ${BRIEF_SLIDE_GLOB}
+  run_step "Deck 冻结 soffice 转 PDF" soffice --headless --convert-to pdf --outdir /tmp "${BRIEF_PPTX}"
+  run_step "Deck 冻结 pdftoppm 出图" pdftoppm -png -r 110 "${BRIEF_PDF}" "${BRIEF_SLIDE_PREFIX}"
+  run_step "Deck 冻结 check-visual 视觉门" "${PPTFORGE}" check-visual ${BRIEF_SLIDE_GLOB} --roles cover,section,content,content,summary
 fi
 
 END_TS="$(date +%s)"
