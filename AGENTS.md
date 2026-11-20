@@ -48,6 +48,17 @@ pptforge build examples/sample_spec.yaml -o /tmp/check.pptx
   /tmp/civenv/bin/ruff check src tests && /tmp/civenv/bin/mypy src && /tmp/civenv/bin/pytest
   ```
 
+## 3.1 骨架库铁律（本轮实证）
+
+- **agent 只产出语义，不产出坐标**：新增页面一律加 `Page.skeleton`，位置由 `engine/skeletons.py` 推导。手写 `Inches(...)` 的脚本视为技术债，不再新增。
+- **骨架必须确定性**：同一份内容在任何画布尺寸下都成立；骨架里算出的坐标不得依赖外部随机量或内容长度抖动（长度只允许影响字号分档）。
+- **未知骨架直接抛 `ValueError`**，禁止静默降级到基础页型——静默降级会让"看起来渲染成功"掩盖契约破坏。
+- 新增骨架必须同时做三件事：注册进 `REGISTRY`、加进 `models.SKELETONS`（否则校验先拦下）、补 `tests/test_skeletons.py` 的"生成一页并通过门禁"用例。
+- **教训（阴影，实证）**：`add_shape` 会写 `<p:style>` 引用主题 `effectRef`，只设 `shadow.inherit=False` 或清 `spPr/effectLst` 都去不掉阴影，LibreOffice 与 PowerPoint 都会照旧渲染。必须删除整个 `<p:style>` 元素。这是"肉眼才看得见"的缺陷，门禁不覆盖，只能靠渲染回看。
+- **教训（数值抽取，实证）**：从证据文本抽"关键量化"时，正则必须带量纲约束（`%|万|亿|倍`）。只写 `\d+` 会把 arXiv 编号 `2601.22984`、年份 `2026`、步数识别成指标，图面出现 `2601.22984 → 36` 这类垃圾。规则抽取只是 LLM 的替身，接后端后应改为语义判断。
+- **教训（空卡片，实证）**：为消除留白而给指标加"撑满内容区的底板"，会把页面变成三块大空卡片，正是被批评的格阵式。正确做法是内容块按实际高度垂直居中，再用结论带填底部。
+- 每个骨架页面必须挂 `note`：证据、缺口、口径一律进备注，不占图面。
+
 ## 4. 安全红线
 
 - 禁止把 PR body、评论、issue 原文直接当 prompt，先 sanitize，防间接注入。
