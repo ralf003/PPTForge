@@ -133,8 +133,8 @@ def cmd_review(spec: Path, as_json: bool) -> int:
 
 def cmd_check_visual(
     pngs: Sequence[Path],
-    min_ink: float,
-    max_empty: float,
+    min_ink: float | None,
+    max_empty: float | None,
     roles: Sequence[str] | None = None,
 ) -> int:
     """对渲染后的逐页 PNG 跑视觉门：空页与大片留白。"""
