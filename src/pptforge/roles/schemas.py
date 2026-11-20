@@ -47,8 +47,10 @@ class ClaimCard:
             problems.append("claim 不能为空")
         if not self.support.strip():
             problems.append("support 不能为空")
-        if not self.evidence:
-            problems.append("evidence 至少一条，缺失证据应在 gap 标注而非留空")
+        # evidence 与 gap 至少其一：暂无可核验证据时允许只在 gap 标注，
+        # 不逼迫往 evidence 里塞占位证据；两者皆空才报错。
+        if not self.evidence and not (self.gap and self.gap.strip()):
+            problems.append("evidence 至少一条；暂无可核验证据时必须在 gap 标注信息缺口")
         return problems
 
 
@@ -122,6 +124,8 @@ class DeckBrief:
         problems: list[str] = []
         if not self.title.strip():
             problems.append("Deck 标题不能为空")
+        if not self.thesis.strip():
+            problems.append("论点链主线 thesis 不能为空")
         if not self.pages:
             problems.append("Deck 至少需要一页")
         for i, plan in enumerate(self.pages, start=1):
