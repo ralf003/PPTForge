@@ -37,8 +37,8 @@
 级别口径：
 
 - **critical** 阻断交付：`Verdict.ok` 为假，CLI `review` 退出码 1，闭环进入 repair 或耗尽后升级人工。
-- **warning / info** 不阻断交付；warning 在闭环内由 `repair()` 按确定性动作处理，info 仅备查。
-- **语义评审最高 warning，不构成硬门**：接 LLM 后端时，`_semantic()` 产出的 finding 不可复现，原始 critical 一律降级为 warning；后端输出非法或不可用时语义评审静默缺席，不阻断确定性判决。硬门只由上表确定性规则把守。
+- **warning / info** 不阻断交付，也不触发 repair：warning 仅在同轮 verdict 存在 critical、`repair()` 被调用时随同一轮按码附带处理；warning-only 判决带 finding 原样交付，info 仅备查。
+- **语义评审最高 warning，不构成硬门**：接 LLM 后端时，`_semantic()` 产出的 finding 不可复现，原始 critical 一律降级为 warning；后端解析失败、传输 / HTTP / 系统异常或不可用时语义评审静默缺席，不阻断确定性判决。硬门只由上表确定性规则把守。
 
 ## 说明
 
