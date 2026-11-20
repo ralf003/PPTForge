@@ -60,7 +60,7 @@ Director.brief_page ──▶ PageBrief ──gate(Gate)──▶ Researcher.res
 两点现状约束（详见第 7 节）：
 
 - `Pipeline.build_page()` 闭环在 `Page` 处结束，本身不经过骨架层与渲染层；`Pipeline.build_pptx()` 在其后经 `engine/bridge.py` 接骨架层与渲染层出单页 PPTX 并过静态门。CLI `build` 路径仍独立走 YAML spec。
-- 角色层一次只处理一页，没有 Deck 级多页编排。
+- 多页闭环已具备：`Pipeline.build_deck()` 逐页跑闭环后组装 `Deck`，经 `bridge.render_deck_with_report()` 整份过静态门；但逐页独立定调，缺 Director 一次冻结整份论点链的 deck 级大纲，且 Designer 只产 content 页。
 
 ## 4. 角色职责与交接契约
 
@@ -182,6 +182,7 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 | Reviewer 确定性评审 | `roles/reviewer.py`：`Reviewer.review_page` / `review` → `Verdict` / `Finding` | RV001–RV008；`backend=None` 零网络可复现 |
 | 单页闭环编排 | `roles/pipeline.py`：`Pipeline.build_page` → `Delivery` | `max_iter=3`，耗尽抛 `ReviewExhaustedError` 并带最后 Verdict |
 | Engine 接入 Pipeline 闭环 | `engine/bridge.py`：`render_verified` / `render_with_report` / `EngineQualityError`；`roles/pipeline.py`：`Pipeline.build_pptx` → `PptxDelivery(pptx, delivery, gate_report)` | `tests/test_bridge.py` 成功/失败两条离线用例；`scripts/verify.sh` e2e 段（`scripts/e2e_pipeline.py` 出单页 → soffice → pdftoppm → `check-visual`） |
+| Deck 级多页闭环 | `engine/bridge.py`：`render_deck_verified` / `render_deck_with_report`；`roles/pipeline.py`：`DeckPageSpec` / `Pipeline.build_deck` → `DeckDelivery(pptx, deliveries, gate_report)` | `tests/test_bridge.py` 多页成功/失败/空规格用例；`scripts/verify.sh` 多页 e2e 段（`scripts/e2e_deck_pipeline.py` 出三页 → 逐页视觉门） |
 | 旧语义研究入口 | `Pipeline.run` | 返回 `ResearchBrief`，不进 Designer / Reviewer |
 | 骨架库五个版式 | `engine/skeletons.py`：`REGISTRY`、`render_skeleton`、`skeleton_keys` | `track / stat / topology / hero / split`，未知骨架抛 `ValueError` 不降级 |
 | 确定性渲染引擎 | `engine/renderer.py`：`Renderer.render` / `save` / `_dispatch`；`engine/ooxml_fix.py: fix_chart_axis_ids` | 原生可编辑 shape；保存前修轴 ID |
@@ -197,7 +198,7 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 
 | 未实现项 | 缺什么 | 影响 |
 | --- | --- | --- |
-| Deck 级多页编排 | 跨页大纲生成、页序与封面/结论衔接、Deck 级闭环均无；`Director.brief_page` 一次只定一页 | 闭环只能交付单页 `Delivery`；多页稿件目前仍需手写 YAML spec 后走 `build` |
+| Deck 级大纲与非 content 页 | 多页闭环已能交付整份过静态门的 PPTX；缺的是 Director 一次冻结整份论点链（`brief_deck`）、页序与封面/结论衔接，以及 Designer 产出 cover/section/summary 页（现硬编码 content） | 多页逐页独立定调，跨页论点一致性无保证；非 content 页仍需手写 YAML spec 后走 `build` |
 | 真实 LLM 后端产出质量验证 | 缺 `OpenAICompatibleBackend` 接真实端点跑通 Director / Researcher / Reviewer 语义路径并验收的记录 | 真实模型下的结构化产物质量、JSON 输出稳定性、语义 finding 可用性均未验证；离线结论不可外推 |
 | 渲染回看 harness 未进库方法 | PPTX → PDF → 逐页 PNG 的转换链路在 `scripts/verify.sh` / CI 外部编排；库内只提供 `gates/visual.py` 的 PNG 判定函数 | 视觉门的产物侧喂数（soffice / pdftoppm）不是库调用；库方法不能独立完成"出片后回看" |
 | Designer 独立角色类 | 当前是模块级函数集合，无统一角色对象接口与实例状态 | 不能把系统描述成"五个对等角色对象"；这是形态差异，现有函数职责已闭合 |
@@ -205,6 +206,12 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 | MCP 入口 | `src/` 内无 MCP server / tool 暴露实现，`connectors/`、`vision/` 包为空 | 现状只有库调用与 CLI 两个入口；旧 README 的"多入口"表述需更正 |
 | 既有 PPTX 反向解析与编辑式改造 | 缺读取现有 PPTX、诊断后回写编辑的路径；引擎只做 spec → PPTX 正向渲染 | "现有 PPT 优化"场景当前无代码支撑，属规划方向 |
 | Researcher 联网接地检索 | 后端协议只有 `complete(prompt)` 文本补全，无检索工具；`researcher.py` docstring 注明接地需调用方提供后端 | 证据真实性依赖所接后端能力；`ReplayBackend` 回放不产出真实可核验证据 |
+
+多页闭环上线时实测修复的三个骨架/色板缺陷（根因，非 workaround）：
+
+1. `_topology` 层条高度被 `min(1.10)` 封死且不随 claim 让界，n<4 时底部整片留白；改为与 claim 边界对齐、上限 1.60 撑满可用高度。
+2. `_topology` 原先不渲染 `page.claim`（静默丢弃结论带），补齐 `_claim_band` 调用。
+3. 调色板 `tint=E8EEF9` 与背景 `bg=F4F6FA` 的像素距离仅 14.5，低于视觉门 `INK_DIFF=24`，分层盒在网格里被当成背景、留白门失效；`tint` 改为 `DCE6F5`（实测距离 29.3），并在 `theme.py` 注明该一致性约束。
 
 ## 8. 被否决的方案与理由
 
@@ -221,4 +228,4 @@ AGENTS.md 第 1 节明确：视觉美学最终交付保留人工确认位；人�
 - **错误能否收敛。** 一键链路里，版面问题（溢出、重叠、对比度不足、留白过大）混在自然语言产出里，发现后只能整体重来，无法定位到可修复的规则项。本仓库把错误切成可执行判决：静态门与视觉门输出定位到页与字段的 issue，评审 finding 带稳定规则码与 `fix` 方向，`repair()` 按码做确定性修复，超限才升级人工。
 - **产物能否审计。** 一键产出的是不可回溯的成片；本仓库的产物是经过 `Deck.validate` / `Page.validate` / 规则判决的结构化 `Page` + 可编辑 OOXML，证据与口径进 `note` 留档，门禁结论可在 CI 干净环境复现。
 
-需要说明：单页五角色端到端出 PPTX 已成立（`build_pptx` 渲染并过静态门，见 7.1）；Deck 级编排、真实后端下的收敛性尚未落地（见 7.2）。
+需要说明：单页与多页五角色端到端出 PPTX 均已成立（`build_pptx` / `build_deck` 渲染并过静态门，见 7.1）；Deck 级大纲冻结、非 content 页生产、真实后端下的收敛性尚未落地（见 7.2）。
