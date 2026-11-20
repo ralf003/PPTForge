@@ -43,7 +43,7 @@ Success: no issues found in 23 source files
 ### 1.3 测试
 
 ```bash
-python3 -m pytest -q
+python3 -m pytest
 ```
 
 实测输出：
@@ -150,7 +150,7 @@ bash scripts/verify.sh --skip-visual   # 跳过 soffice / pdftoppm / check-visua
 - `gates/`：静态门检查项与阈值、视觉门指标与分档；
 - 骨架注册表 `engine/skeletons.py` 的 `REGISTRY`。
 
-按 AGENTS.md 3.1 契约教训（run #26）：新增骨架时，`REGISTRY` 注册、`models.SKELETONS` 白名单、`tests/test_skeletons.py` 用例三处必须在同一个 commit 落地；分离推送会被 `test_registry_matches_model_contract` 拦下。
+按 AGENTS.md 3.1「新增骨架必须同时做三件事」：新增骨架时，`REGISTRY` 注册、`models.SKELETONS` 白名单、`tests/test_skeletons.py` 用例三处必须在同一个 commit 落地；分离推送会被 `test_registry_matches_model_contract` 拦下。
 
 ### 2.4 合并条件
 
