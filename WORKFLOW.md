@@ -52,7 +52,7 @@ python3 -m pytest
 74 passed, 11 warnings in 1.21s
 ```
 
-11 条 warning 为 Pillow `Image.getdata` 的 DeprecationWarning（`gates/visual.py`），不影响结论。
+Pillow `Image.getdata()` 弃用告警已随 `get_flattened_data()` 迁移消除；当前 warning 以 pytest 实跑输出为准。
 
 ### 1.4 生成 PPTX
 
